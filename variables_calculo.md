@@ -66,7 +66,7 @@ Los **identificadores** son el contrato código/API. Las **etiquetas** en pantal
 
 | Etiqueta (asesor) | Variable |
 |-------------------|----------|
-| Bono descuento (%) | `bono_descuento_pct` |
+| Beneficio inmobiliario (%) | `bono_descuento_pct` |
 | Descuento adicional (%) | `bono_max_pct` |
 | Bono adicionales | `bono_aplica_adicionales` |
 | PIE a documentar (%) | `pie.pie_pct` |
@@ -75,6 +75,17 @@ Los **identificadores** son el contrato código/API. Las **etiquetas** en pantal
 | Valor tasación (UF) (solo lectura) | `valor_tasacion_uf` (resultado) |
 | Valor escrituración (UF) (solo lectura) | `valor_escritura_uf` (resultado) |
 | Resumen «Bono descuento (UF)» en PDF/simulador | `beneficio_inmobiliario_uf` (resultado) |
+
+### Mapeo cotizador secuencial (referencia comercial)
+
+En planillas con **varios % de descuento en cadena** sobre el precio lista y luego una **bonificación %** hacia escrituración:
+
+| Paso en cotizador depurado | Equivalente en esta app |
+|----------------------------|-------------------------|
+| 1.er descuento (% s/ lista) | **Dcto. (% s/ lista)** + **Dcto. (UF)** (y coherencia con **Precio neto**). Varios pasos secuenciales deben **reflejarse en el precio neto** cargado (manual o derivado). |
+| 2.do descuento | Hoy no hay campo propio; puede integrarse en el neto o en el primer dcto. |
+| 3.er descuento (% s/ precio ya rebajado) | **Descuento adicional (%)** (`bono_max_pct`) **solo si** ese % debe aplicarse **en el motor** además del neto. Si el neto **ya incluye** ese paso (como en la landing «Precio con descuento»), dejar **Descuento adicional % = 0** para no duplicar. |
+| Bonificación % (→ valor escrituración) | **Beneficio inmobiliario (%)** (`bono_descuento_pct`). Con neto ya final y sin `bono_max` extra: tasación/escritura depto siguen `precio_neto ÷ (1 − beneficio)` (caso típico bonificación pura). |
 
 ### `DatosPropiedad` (antecedentes + detalle precio)
 
@@ -85,10 +96,11 @@ Los **identificadores** son el contrato código/API. Las **etiquetas** en pantal
 
 ### `DatosDesglosePie`
 
-- `pie_pct` — pie sobre `valor_escritura_uf`.
-- `upfront_pct`, `cuotas_antes_entrega_pct`, `cuotas_antes_entrega_n`, `cuotas_despues_entrega_pct`, `cuotas_despues_entrega_n`, `cuoton_pct`, `cuoton_n_cuotas`, `pie_n_cuotas_total`.
+- `pie_pct` — pie documentado sobre `valor_escritura_uf` → `pie_total_uf = valor_escritura_uf × pie_pct`.
+- `upfront_pct`, `cuotas_antes_entrega_pct`, `cuotas_antes_entrega_n`, `cuotas_despues_entrega_pct`, `cuotas_despues_entrega_n`, `cuoton_pct`, `cuoton_n_cuotas` — cada `%` del desglose se aplica sobre **`valor_escritura_uf`** (no sobre `pie_total_uf`); los montos en $ del resumen pie usan esa base.
+- `pie_n_cuotas_total` — usado en **diversificación / flujo 60 meses** (`calculosDiversificacion.ts`) para repartir el pie en cuota mensual equivalente; **no** entra al cálculo de upfront / cuota antes / después / cuotón en `calculosPie.ts`.
 
-**Nota:** los % del desglose son fracciones del **pie total** (`pie_total_uf`), no del valor escrituración. No hay validación automática de que sumen 100 % del pie.
+No hay validación automática de que la suma de % de desglose coincida con `pie_pct`.
 
 ### `DatosHipotecario`
 
@@ -142,9 +154,11 @@ Tomando:
 
 Se calcula:
 
-1. **Tasación depto (`valor_tasacion_uf`)**  
-   - Si `b_max` y `b_desc` son iguales (misma magnitud): `valor_tasacion_uf = precio_neto_uf` (caso carta tasación: beneficio = desc. adicional).  
-   - Si no: `valor_tasacion_uf = precio_neto_uf / (1 - b_desc)` si `(1 - b_desc) > 0`, si no fallback `precio_neto_uf`.
+1. **Tasación depto (`valor_tasacion_uf`)** — fórmula única:  
+   `valor_tasacion_uf = precio_neto_uf × (1 - b_max) / (1 - b_desc)`  
+   - Solo descuento adicional (`b_desc = 0`): **multiplica** el neto: `× (1 - b_max)` (no dividir).  
+   - Solo beneficio (`b_max = 0`): **divide** el neto: `÷ (1 - b_desc)`.  
+   - Si `(1 - b_desc) ≤ 0`, fallback `precio_neto_uf`.
 
 2. **Adicionales en escritura (UF)** — por ítem, luego suma:  
    - Si `bono_aplica_adicionales = false`: `estacionamiento_uf + bodega_uf`.  

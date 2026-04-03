@@ -46,7 +46,7 @@ describe('recomputar*', () => {
   it('tasación y escritura coinciden con fórmula manual', () => {
     const p = cotBase().propiedad
     const tas = recomputarValorTasacionUf(p)
-    expect(tas).toBeCloseTo(900 / 0.9, 6)
+    expect(tas).toBeCloseTo((900 * 0.95) / 0.9, 6)
     const esc = recomputarValorEscrituraUf(p)
     const adic = 20 / 0.9 + 10 / 0.9
     expect(esc).toBeCloseTo(tas + adic, 6)

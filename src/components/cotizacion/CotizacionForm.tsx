@@ -3,7 +3,6 @@ import { useAppStore } from '@/store/useAppStore'
 import { useProyectos, useUnidades } from '@/hooks/useSupabase'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { debugValorPropiedad100 } from '@/lib/engines/debugValorPropiedad100'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
 import type { DatosPropiedad } from '@/types'
 
@@ -99,7 +98,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   if (!cot) return null
 
-  // Resultados para la UI (siempre; no depender de `activa`, que solo marca cotización “en uso” en el store)
+  // Tasación depto: `valor_tasacion_uf` sale del motor `calcularResultadosCotizacion` → `valorTasacionDeptoUf` en `src/lib/engines/calculosCotizacion.ts` (no se calcula en este archivo).
   const res = calcularResultadosCotizacion(cot, uf)
 
   const precioListaUf = p.precio_lista_uf
@@ -117,31 +116,24 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     monto_cuoton_clp: montoCuotonClp,
   } = calcularMontosDesglosePieClp(valorEscrituraUf, pie, uf)
 
-  const dbg = cot.activa ? debugValorPropiedad100(cot, res) : null
-
-  const filaDebug = (ok: boolean, titulo: string, detalle: string) => (
-    <div
-      key={titulo}
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 10,
-        padding: '8px 10px',
-        borderRadius: 8,
-        background: ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.1)',
-        border: `1px solid ${ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
-        fontSize: 12,
-      }}
-    >
-      <span style={{ fontWeight: 800, color: ok ? '#10b981' : '#ef4444', flexShrink: 0 }}>
-        {ok ? '100%' : '≠'}
-      </span>
-      <div>
-        <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>{titulo}</div>
-        <div style={{ color: 'var(--color-text-muted)', marginTop: 2, lineHeight: 1.35 }}>{detalle}</div>
-      </div>
-    </div>
-  )
+  /** Misma tolerancia que `validarCalculosCotizacion` (pie + LTV = 100%). */
+  const EPS_PCT_REVISION = 0.0005
+  const pctFinanciamiento = hip.hipotecario_aprobacion_pct
+  const pctAbonoInicial = pie.upfront_pct
+  const pctAntesEntrega = pie.cuotas_antes_entrega_pct
+  const pctDespuesEntrega = pie.cuotas_despues_entrega_pct
+  const pctCuoton = pie.cuoton_pct
+  /** Resto del pie documentado respecto de abono + tramos (etiqueta planilla: bonificación). */
+  const pctBonificacionPie =
+    pie.pie_pct - pctAbonoInicial - pctAntesEntrega - pctDespuesEntrega - pctCuoton
+  const sumaPctRevisionHipotecario =
+    pctFinanciamiento +
+    pctBonificacionPie +
+    pctAntesEntrega +
+    pctDespuesEntrega +
+    pctAbonoInicial +
+    pctCuoton
+  const revisionPorcentajesOk = Math.abs(sumaPctRevisionHipotecario - 1) <= EPS_PCT_REVISION
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -253,6 +245,18 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           ))}
 
           <SectionHeading>DETALLE PRECIOS Y DESCUENTOS</SectionHeading>
+          <p
+            style={{
+              gridColumn: '1 / -1',
+              fontSize: 11,
+              color: 'var(--color-text-muted)',
+              margin: '0 0 4px',
+              lineHeight: 1.5,
+            }}
+          >
+            Equivalencia cotizador en cadena: 1.er % ≈ dcto. s/lista; 3.er desc. secuencial ≈ «Descuento adicional %»; bonificación ≈ «Beneficio inmobiliario %».
+            Si el <strong>precio neto</strong> ya trae el 3.er descuento aplicado, deja descuento adicional en <strong>0</strong> y usa solo beneficio para escrituración (evita doble conteo).
+          </p>
 
           <div className="form-group">
             <label className="form-label">Lista (UF)</label>
@@ -271,7 +275,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Dcto. (% s/ lista)</label>
+            <label className="form-label" title="Equivalente al 1.er descuento % s/ lista en cotizadores secuenciales">
+              Dcto. (% s/ lista)
+            </label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -324,7 +330,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Descuento adicional (%)</label>
+            <label className="form-label" title="≈ 3.er descuento secuencial; si ya está en precio neto, usar 0">
+              Descuento adicional (%)
+            </label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -339,7 +347,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Beneficio inmobiliario (%)</label>
+            <label className="form-label" title="≈ Bonificación % hacia valor tasación / escrituración">
+              Beneficio inmobiliario (%)
+            </label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -407,6 +417,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           {cot.activa && (
             <>
               <SectionHeading>TASACIÓN Y ESCRITURACIÓN</SectionHeading>
+              {/* UF tasación: `valorTasacionDeptoUf(precio_neto, bono_descuento_pct, bono_max_pct)` en calculosCotizacion.ts */}
               <div className="form-group">
                 <label className="form-label">Valor tasación depto (UF)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
@@ -429,6 +440,19 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           )}
 
           <SectionHeading>PIE Y FORMA DE PAGO</SectionHeading>
+          <p
+            style={{
+              gridColumn: '1 / -1',
+              fontSize: 11,
+              color: 'var(--color-text-muted)',
+              margin: '0 0 4px',
+              lineHeight: 1.5,
+            }}
+          >
+            Pie documentado = valor escrituración × %. Los % de upfront, tramos en cuotas y cuotón son sobre{' '}
+            <span style={{ color: 'var(--color-text)' }}>valor escrituración</span>; abajo, «Resumen financiero» muestra pesos.
+            Cuotas totales pie alimenta la pestaña Flujo (diversificación), no este desglose.
+          </p>
           <div className="form-group">
             <label className="form-label">PIE a documentar (%)</label>
             <div className="form-input-group">
@@ -443,6 +467,17 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               <span className="suffix">%</span>
             </div>
           </div>
+          {cot.activa && res && (
+            <div className="form-group">
+              <label className="form-label">Pie total documentado</label>
+              <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                {formatUF(pieTotalUf)}
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  {formatCLP(pieTotalUf * uf)}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="form-group">
             <label className="form-label">Upfront (% s/ valor escrituración)</label>
             <div className="form-input-group">
@@ -555,21 +590,32 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
           {cot.activa && (
             <>
-              <SectionHeading>RESUMEN FINANCIERO</SectionHeading>
+              <SectionHeading>RESUMEN FINANCIERO (desglose en $)</SectionHeading>
+              <p
+                style={{
+                  gridColumn: '1 / -1',
+                  fontSize: 11,
+                  color: 'var(--color-text-muted)',
+                  margin: '0 0 4px',
+                  lineHeight: 1.45,
+                }}
+              >
+                Upfront es pago único. Cuota antes / después / cuotón: monto mensual de cada tramo (tramo en UF ÷ N cuotas, × UF del día).
+              </p>
               <div className="form-group">
                 <label className="form-label">Monto upfront ($)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoUpfrontClp)}</div>
               </div>
               <div className="form-group">
-                <label className="form-label">Monto cuota antes ($)</label>
+                <label className="form-label">Monto cuota antes entrega ($)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotaAntesClp)}</div>
               </div>
               <div className="form-group">
-                <label className="form-label">Monto cuota después ($)</label>
+                <label className="form-label">Monto cuota después entrega ($)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotaDespuesClp)}</div>
               </div>
               <div className="form-group">
-                <label className="form-label">Monto cuotón ($)</label>
+                <label className="form-label">Monto cuota cuotón ($)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotonClp)}</div>
               </div>
             </>
@@ -584,36 +630,33 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sistema Francés + seguros</span>
         </div>
         <div style={rowGridStyle}>
-          <SectionHeading>PARÁMETROS Y RESULTADO</SectionHeading>
+          <SectionHeading>CRÉDITO SOBRE VALOR ESCRITURACIÓN</SectionHeading>
           <div className="form-group">
-            <label className="form-label">Valor escrituración (UF)</label>
+            <label className="form-label">Valor escrituración UF</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {formatUF(res.valor_escritura_uf)}
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                {formatCLP(res.valor_escritura_uf * uf)}
-              </div>
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">% crédito (LTV)</label>
+            <label className="form-label">% crédito</label>
             <div className="form-input-group">
               <FormattedNumberInput min={50} max={100}
                 value={hip.hipotecario_aprobacion_pct * 100} decimals={2}
                 onChange={(val) => setHipotecario(cotizacionId, { hipotecario_aprobacion_pct: val / 100 })} style={{ width: '100%' }} />
               <span className="suffix">%</span>
             </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">PIE a documentar</label>
-            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-              {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% · {formatUF(pieTotalUf)}
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                {formatCLP(pieTotalUf * uf)}
-              </div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
+              Monto crédito: {formatUF(res.hipotecario.monto_credito_uf)} UF
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Tasa interés anual (%)</label>
+            <label className="form-label">PIE a documentar %</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Tasa interés (%)</label>
             <div className="form-input-group">
               <FormattedNumberInput min={0} max={20}
                 value={hip.hipotecario_tasa_anual * 100} decimals={2}
@@ -622,7 +665,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Plazo (años)</label>
+            <label className="form-label">Plazo años</label>
             <div className="form-input-group">
               <FormattedNumberInput min={5} max={30}
                 value={hip.hipotecario_plazo_anos} decimals={0}
@@ -631,23 +674,94 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Monto dividendo mensual (UF)</label>
+            <label className="form-label">Monto dividendo UF</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {formatUF(res.hipotecario.dividendo_total_uf)}
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Monto dividendo mensual ($)</label>
+            <label className="form-label">Monto dividendo ($)</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {formatCLP(res.hipotecario.dividendo_total_clp)}
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Dividendo / valor escrituración (%)</label>
-            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-              {res.valor_escritura_uf > 0
-                ? `${((res.hipotecario.dividendo_total_uf / res.valor_escritura_uf) * 100).toLocaleString('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}%`
-                : '—'}
+
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              marginTop: 8,
+              padding: '16px 18px',
+              borderRadius: 10,
+              background: 'rgba(18, 24, 38, 0.92)',
+              border: `1px solid ${revisionPorcentajesOk ? 'rgba(59, 130, 246, 0.5)' : 'rgba(239, 68, 68, 0.45)'}`,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  background: revisionPorcentajesOk ? 'var(--color-success)' : '#ef4444',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                  lineHeight: 1,
+                }}
+              >
+                {revisionPorcentajesOk ? '✓' : '!'}
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--color-text)' }}>
+                Revisión de porcentajes
+              </div>
+            </div>
+            <p
+              style={{
+                margin: '0 0 14px',
+                fontSize: 12,
+                color: 'var(--color-text-muted)',
+                lineHeight: 1.5,
+              }}
+            >
+              Sumando: % financiamiento + % bonificación + % antes + % después + % abono inicial + % cuotón
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 12,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                fontSize: 14,
+                fontWeight: 700,
+                color: revisionPorcentajesOk ? 'var(--color-success)' : '#f87171',
+                marginBottom: 10,
+              }}
+            >
+              <span>Suma de porcentajes:</span>
+              <span>
+                {(sumaPctRevisionHipotecario * 100).toLocaleString('es-CL', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+                %
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: revisionPorcentajesOk ? 'var(--color-success)' : '#f87171',
+                lineHeight: 1.45,
+              }}
+            >
+              {revisionPorcentajesOk
+                ? '✓ Perfecto: los porcentajes suman exactamente 100%.'
+                : `Ajusta los porcentajes: la suma es ${(sumaPctRevisionHipotecario * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% (objetivo 100%).`}
             </div>
           </div>
         </div>
@@ -790,48 +904,6 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           )}
         </div>
       </div>
-
-      {/* ── Resultados ── */}
-      {dbg && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">🔎 Depurador 100% valor propiedad</h3>
-            <span className={dbg.allOk ? 'badge badge-green' : 'badge'} style={dbg.allOk ? {} : { background: 'rgba(239,68,68,0.2)', color: '#fca5a5' }}>
-              {dbg.allOk ? 'Todo OK' : 'Revisar diferencias'}
-            </span>
-          </div>
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
-            Criterios alineados con <code style={{ fontSize: 10 }}>variables_calculo.md</code>: lista − dcto. y cadena beneficio inmobiliario / tasación;
-            PIE a documentar (%) + % crédito = 100%; y en UF, pie + crédito = valor escrituración.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filaDebug(
-              dbg.okListaMenosDescuentoIgualNeto,
-              'Lista − Descuento (UF) = Precio neto',
-              `Lista ${formatUF(precioListaUf)} − Desc ${formatUF(descuentoUfActual)} = ${formatUF(precioListaUf - descuentoUfActual)} · Neto cargado ${formatUF(p.precio_neto_uf)} · Δ ${dbg.deltaListaNetoUf.toFixed(4)} UF`
-            )}
-            {filaDebug(
-              dbg.okNetoCoherenteConBeneficioInmobiliario,
-              Math.abs(p.bono_max_pct - p.bono_descuento_pct) < 1e-6
-                ? 'Precio neto = Valor tasación depto (% adic. = beneficio inmob.)'
-                : 'Precio neto = Valor tasación × (1 − Beneficio inmob. %)',
-              Math.abs(p.bono_max_pct - p.bono_descuento_pct) < 1e-6
-                ? `Tasación ${formatUF(dbg.valor_tasacion_uf)} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
-                : `Tasación ${formatUF(dbg.valor_tasacion_uf)} × (1 − ${(p.bono_descuento_pct * 100).toFixed(2)}%) = ${formatUF(dbg.valor_tasacion_uf * (1 - p.bono_descuento_pct))} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
-            )}
-            {filaDebug(
-              dbg.okPieMasCreditoPct,
-              'PIE a documentar (%) + % crédito (LTV) = 100%',
-              `${(pie.pie_pct * 100).toFixed(2)}% + ${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}% = ${(dbg.sumaPieYLtv * 100).toFixed(2)}% · Δ ${(dbg.deltaPct * 100).toFixed(3)} pt`
-            )}
-            {filaDebug(
-              dbg.okPieMasCreditoUfIgualEscritura,
-              'Pie (UF) + Crédito (UF) = Valor escrituración (UF)',
-              `${formatUF(dbg.pie_total_uf)} + ${formatUF(dbg.monto_credito_uf)} = ${formatUF(dbg.pie_total_uf + dbg.monto_credito_uf)} · Escritura ${formatUF(dbg.valor_escritura_uf)} · Δ ${dbg.deltaPieCreditoEscrituraUf.toFixed(4)} UF`
-            )}
-          </div>
-        </div>
-      )}
 
       {cot.activa && (
         <div className="card">

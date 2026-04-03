@@ -6,6 +6,7 @@ import {
   calcularHipotecario,
   calcularPlusvalia,
   calcularResultadosCotizacion,
+  valorTasacionDeptoUf,
 } from './calculosCotizacion'
 import { validarResultadosCotizacion } from './validarCalculosCotizacion'
 
@@ -61,11 +62,11 @@ describe('calcularResultadosCotizacion', () => {
     )
   })
 
-  it('sin adicionales: escrituración = tasación aunque haya descuento adicional (%)', () => {
+  it('sin adicionales: tasación = neto×(1−desc.adic.)÷(1−benef.) con ambos %', () => {
     const cot = cotEjemploPlanilla()
     cot.propiedad.bono_max_pct = 0.1
     const r = calcularResultadosCotizacion(cot, uf)
-    const tas = 2881.33 / 0.85
+    const tas = (2881.33 * 0.9) / 0.85
     expect(r.valor_tasacion_uf).toBeCloseTo(tas, 2)
     expect(r.valor_escritura_uf).toBeCloseTo(tas, 2)
   })
@@ -75,8 +76,8 @@ describe('calcularResultadosCotizacion', () => {
     cot.propiedad.bono_max_pct = 0.1
     cot.propiedad.estacionamiento_uf = 100
     cot.propiedad.bono_aplica_adicionales = false
+    const tas = (2881.33 * 0.9) / 0.85
     const r1 = calcularResultadosCotizacion(cot, uf)
-    const tas = 2881.33 / 0.85
     expect(r1.valor_escritura_uf).toBeCloseTo(tas + 100, 2)
 
     cot.propiedad.bono_aplica_adicionales = true
@@ -99,6 +100,20 @@ describe('calcularResultadosCotizacion', () => {
     expect(r.valor_tasacion_uf).toBeCloseTo(3589.2, 2)
     const adicEsc = 200 / 0.85 + 100 / 0.85
     expect(r.valor_escritura_uf).toBeCloseTo(3589.2 + adicEsc, 2)
+  })
+
+  it('beneficio 0% y desc. adicional 10%: tasación = neto × (1 − desc. adic.)', () => {
+    const cot = cotEjemploPlanilla()
+    cot.propiedad.bono_descuento_pct = 0
+    cot.propiedad.bono_max_pct = 0.1
+    const r = calcularResultadosCotizacion(cot, uf)
+    expect(r.valor_tasacion_uf).toBeCloseTo(cot.propiedad.precio_neto_uf * 0.9, 2)
+    expect(valorTasacionDeptoUf(100, 0, 0.1)).toBeCloseTo(90, 6)
+    expect(valorTasacionDeptoUf(3389.8, 0, 0.1)).toBeCloseTo(3050.82, 2)
+  })
+
+  it('neto 3389,80; 15% desc. adic.; 10% benef.: tasación ≈ 3201,48 UF', () => {
+    expect(valorTasacionDeptoUf(3389.8, 0.1, 0.15)).toBeCloseTo(3201.48, 2)
   })
 
   it('con beneficio 100% evita división por cero: tasación = precio neto', () => {

@@ -11,8 +11,26 @@ import type {
 // MOTOR DE CÁLCULO — fórmulas exactas de la planilla Excel
 // ─────────────────────────────────────────────────────────────────
 
-/** Igualdad de % descuento adicional vs beneficio inmobiliario (regla especial tasación). */
-const EPS_PCT_EQ = 1e-9
+const EPS_PCT_POS = 1e-12
+
+/**
+ * Tasación depto (UF), una sola fórmula:
+ * `precio_neto × (1 − desc. adicional) ÷ (1 − beneficio inmob.)`
+ * - Solo desc. adic. (beneficio 0%): tasación = neto × (1 − b_max). Ej. 3389,80 × 0,9 = 3050,82.
+ * - Solo beneficio (b_max 0%): tasación = neto ÷ (1 − beneficio).
+ * - Ambos: ej. neto × 0,85 ÷ 0,9 ≈ 3201,48.
+ * Si `(1 − beneficio) ≤ 0`, se devuelve `precio_neto` (evita división inválida).
+ */
+export function valorTasacionDeptoUf(
+  precio_neto_uf: number,
+  bono_descuento_pct: number,
+  bono_max_pct: number
+): number {
+  const db = 1 - bono_descuento_pct
+  const numer = precio_neto_uf * (1 - bono_max_pct)
+  if (db <= 0) return precio_neto_uf
+  return numer / db
+}
 
 function adicionalesEscrituraUf(propiedad: Cotizacion['propiedad']): number {
   const est = propiedad.estacionamiento_uf
@@ -35,16 +53,11 @@ export function calcularResultadosCotizacion(
   const bono_descuento_pct = propiedad.bono_descuento_pct
   const bono_max_pct = propiedad.bono_max_pct
 
-  const divisor_tasacion = 1 - bono_descuento_pct
-  const descAdicIgualBeneficio =
-    Math.abs(bono_max_pct - bono_descuento_pct) < EPS_PCT_EQ
-
-  // Tasación depto: si % adicional = % beneficio inmob., coincide con precio neto; si no, neto / (1 − beneficio).
-  const valor_tasacion_uf = descAdicIgualBeneficio
-    ? precio_neto_uf
-    : divisor_tasacion > 0
-      ? precio_neto_uf / divisor_tasacion
-      : precio_neto_uf
+  const valor_tasacion_uf = valorTasacionDeptoUf(
+    precio_neto_uf,
+    bono_descuento_pct,
+    bono_max_pct
+  )
 
   const adicionales_en_escritura_uf = adicionalesEscrituraUf(propiedad)
 

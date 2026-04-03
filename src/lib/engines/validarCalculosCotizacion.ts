@@ -1,6 +1,5 @@
 import type { Cotizacion, DatosPropiedad, ResultadosCotizacion } from '@/types'
-
-const EPS_PCT_EQ = 1e-9
+import { valorTasacionDeptoUf } from './calculosCotizacion'
 
 /** Tolerancia por defecto: coherente con `debugValorPropiedad100`. */
 const EPS_UF_DEFAULT = 0.02
@@ -31,12 +30,11 @@ export function recomputarValorEscrituraUf(propiedad: DatosPropiedad): number {
 }
 
 export function recomputarValorTasacionUf(propiedad: DatosPropiedad): number {
-  const neto = propiedad.precio_neto_uf
-  const bDesc = propiedad.bono_descuento_pct
-  const bMax = propiedad.bono_max_pct
-  if (Math.abs(bMax - bDesc) < EPS_PCT_EQ) return neto
-  const divisor_tasacion = 1 - bDesc
-  return divisor_tasacion > 0 ? neto / divisor_tasacion : neto
+  return valorTasacionDeptoUf(
+    propiedad.precio_neto_uf,
+    propiedad.bono_descuento_pct,
+    propiedad.bono_max_pct
+  )
 }
 
 /**

@@ -58,7 +58,7 @@ export interface DatosDesglosePie {
   cuotas_antes_entrega_n: number
   cuotas_despues_entrega_pct: number
   cuotas_despues_entrega_n: number
-  pie_n_cuotas_total: number            // N° cuotas totales del pie
+  pie_n_cuotas_total: number            // N° cuotas para diversificación (flujo); no usado en calculosPie
 }
 
 export interface DatosHipotecario {

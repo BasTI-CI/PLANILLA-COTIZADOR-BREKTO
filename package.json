@@ -8,7 +8,8 @@
     "test:watch": "vitest",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:netlify": "pnpm build && netlify deploy --prod"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "netlify-cli": "^24.9.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vitest": "^3.2.4"

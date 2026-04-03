@@ -2,7 +2,7 @@ import type { Cotizacion, ResultadosCotizacion } from '@/types'
 
 const EPS_UF = 0.02
 const EPS_PCT = 0.0005
-const EPS_PCT_EQ = 1e-9
+const EPS_PCT_POS = 1e-12
 
 export interface DebugValorPropiedad100 {
   /** precio_lista - descuento_uf === precio_neto (coherencia de inputs) */
@@ -10,8 +10,7 @@ export interface DebugValorPropiedad100 {
   deltaListaNetoUf: number
 
   /**
-   * precio_neto === valor_tasacion * (1 - bono_descuento_pct)
-   * Equivale a la identidad inversa de variables_calculo: tasacion = neto / (1 - b_desc)
+   * Coherencia: `precio_neto ≈ tasación × (1 − b_desc) ÷ (1 − b_max)` (inversa de la fórmula del motor).
    */
   okNetoCoherenteConBeneficioInmobiliario: boolean
   deltaNetoTasacionUf: number
@@ -54,11 +53,16 @@ export function debugValorPropiedad100(
   const deltaListaNetoUf = Math.abs(listaMenosDesc - precioNeto)
 
   const bDesc = propiedad.bono_descuento_pct
-  const descAdicIgualBeneficio =
-    Math.abs(propiedad.bono_max_pct - bDesc) < EPS_PCT_EQ
-  const netoEsperadoDesdeTasacion = descAdicIgualBeneficio
-    ? res.valor_tasacion_uf
-    : res.valor_tasacion_uf * (1 - bDesc)
+  const bMax = propiedad.bono_max_pct
+  const oneMinusMax = 1 - bMax
+  const netoEsperadoDesdeTasacion =
+    bDesc > EPS_PCT_POS
+      ? oneMinusMax > EPS_PCT_POS
+        ? (res.valor_tasacion_uf * (1 - bDesc)) / oneMinusMax
+        : precioNeto
+      : oneMinusMax > EPS_PCT_POS
+        ? res.valor_tasacion_uf / oneMinusMax
+        : precioNeto
   const deltaNetoTasacionUf = Math.abs(precioNeto - netoEsperadoDesdeTasacion)
 
   const sumaPieYLtv = pie.pie_pct + hipotecario.hipotecario_aprobacion_pct
