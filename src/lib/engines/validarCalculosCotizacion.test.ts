@@ -48,10 +48,8 @@ describe('recomputar*', () => {
     const tas = recomputarValorTasacionUf(p)
     expect(tas).toBeCloseTo(900 / 0.9, 6)
     const esc = recomputarValorEscrituraUf(p)
-    const f = 0.95
-    const base = tas * f
-    const adic = 30 * f
-    expect(esc).toBeCloseTo(base + adic, 6)
+    const adic = 20 / 0.9 + 10 / 0.9
+    expect(esc).toBeCloseTo(tas + adic, 6)
   })
 })
 

@@ -2,6 +2,7 @@ import type { Cotizacion, ResultadosCotizacion } from '@/types'
 
 const EPS_UF = 0.02
 const EPS_PCT = 0.0005
+const EPS_PCT_EQ = 1e-9
 
 export interface DebugValorPropiedad100 {
   /** precio_lista - descuento_uf === precio_neto (coherencia de inputs) */
@@ -53,7 +54,11 @@ export function debugValorPropiedad100(
   const deltaListaNetoUf = Math.abs(listaMenosDesc - precioNeto)
 
   const bDesc = propiedad.bono_descuento_pct
-  const netoEsperadoDesdeTasacion = res.valor_tasacion_uf * (1 - bDesc)
+  const descAdicIgualBeneficio =
+    Math.abs(propiedad.bono_max_pct - bDesc) < EPS_PCT_EQ
+  const netoEsperadoDesdeTasacion = descAdicIgualBeneficio
+    ? res.valor_tasacion_uf
+    : res.valor_tasacion_uf * (1 - bDesc)
   const deltaNetoTasacionUf = Math.abs(precioNeto - netoEsperadoDesdeTasacion)
 
   const sumaPieYLtv = pie.pie_pct + hipotecario.hipotecario_aprobacion_pct

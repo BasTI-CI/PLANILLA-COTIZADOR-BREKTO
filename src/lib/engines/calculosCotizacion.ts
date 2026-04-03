@@ -11,6 +11,18 @@ import type {
 // MOTOR DE CÁLCULO — fórmulas exactas de la planilla Excel
 // ─────────────────────────────────────────────────────────────────
 
+/** Igualdad de % descuento adicional vs beneficio inmobiliario (regla especial tasación). */
+const EPS_PCT_EQ = 1e-9
+
+function adicionalesEscrituraUf(propiedad: Cotizacion['propiedad']): number {
+  const est = propiedad.estacionamiento_uf
+  const bod = propiedad.bodega_uf
+  if (!propiedad.bono_aplica_adicionales) return est + bod
+  const d = 1 - propiedad.bono_descuento_pct
+  if (d <= 0) return est + bod
+  return est / d + bod / d
+}
+
 /**
  * Punto de entrada principal — calcula todos los resultados de una cotización
  */
@@ -23,23 +35,20 @@ export function calcularResultadosCotizacion(
   const bono_descuento_pct = propiedad.bono_descuento_pct
   const bono_max_pct = propiedad.bono_max_pct
 
-  // Normalizamos bono_descuento_pct para evitar divisiones inválidas.
   const divisor_tasacion = 1 - bono_descuento_pct
-  const valor_tasacion_uf =
-    divisor_tasacion > 0 ? (precio_neto_uf / divisor_tasacion) : precio_neto_uf
+  const descAdicIgualBeneficio =
+    Math.abs(bono_max_pct - bono_descuento_pct) < EPS_PCT_EQ
 
-  const factorConBonoMax = 1 - bono_max_pct
-  const valor_escritura_base_uf = valor_tasacion_uf * factorConBonoMax
-  const adicionales_uf = propiedad.estacionamiento_uf + propiedad.bodega_uf
+  // Tasación depto: si % adicional = % beneficio inmob., coincide con precio neto; si no, neto / (1 − beneficio).
+  const valor_tasacion_uf = descAdicIgualBeneficio
+    ? precio_neto_uf
+    : divisor_tasacion > 0
+      ? precio_neto_uf / divisor_tasacion
+      : precio_neto_uf
 
-  // Switch de negocio: aplica tope sobre tasación también a adicionales o no.
-  const adicionales_en_escritura_uf =
-    propiedad.bono_aplica_adicionales
-      ? adicionales_uf * factorConBonoMax
-      : adicionales_uf
+  const adicionales_en_escritura_uf = adicionalesEscrituraUf(propiedad)
 
-  // Valor de escrituración como base de pie e hipoteca.
-  const valor_escritura_uf = valor_escritura_base_uf + adicionales_en_escritura_uf
+  const valor_escritura_uf = valor_tasacion_uf + adicionales_en_escritura_uf
   const escrituracion_uf = valor_escritura_uf
 
   // Monto UF = valor_tasacion_uf * bono_descuento_pct (resultado `beneficio_inmobiliario_uf`).

@@ -37,7 +37,7 @@ Hoy el ejemplo vive en `useSupabase.ts` → tabla `Stock_Imagina_Prueba` → `Un
 | `precio_dcto` | `precio_neto_uf` | |
 | derivado | `descuento_uf` | `precio_lista_uf - precio_neto_uf` |
 | `dcto` | `bono_descuento_pct` | **Contrato lógico:** decimal (ej. `0.15`); validar que la BD use el mismo criterio |
-| `bono10` | `bono_max_pct` | Descuento adicional sobre tasación hacia escritura (ver §3.1) |
+| `bono10` | `bono_max_pct` | Descuento adicional (%): en escritura solo afecta estac.+bodega si `bono_aplica_adicionales` (ver §3.1) |
 | (fijo hoy) | `bono_aplica_adicionales` | Cuando la API lo tenga, mapear aquí |
 | superficies, modelo, etc. | campos `unidad_*` | |
 | (no en fila actual) | `estacionamiento_uf`, `bodega_uf` | Rellenar desde API cuando existan |
@@ -117,7 +117,7 @@ Todo sale de `calcularResultadosCotizacion`. Campos raíz:
 | Campo | Significado |
 |-------|-------------|
 | `valor_tasacion_uf` | Depto: precio neto repercutido con `bono_descuento_pct` (§3.1) |
-| `valor_escritura_uf` | Base banco: depto tras `bono_max_pct` + adicionales según `bono_aplica_adicionales` |
+| `valor_escritura_uf` | Base banco: `valor_tasacion_uf` + adicionales (con o sin `×(1−bono_max_pct)` según `bono_aplica_adicionales`); sin adicionales = tasación |
 | `escrituracion_uf` | Igual a `valor_escritura_uf` (alias histórico) |
 | `beneficio_inmobiliario_uf` | `valor_tasacion_uf * bono_descuento_pct` |
 | `pie_total_uf` / `pie_total_clp` | Pie documentado sobre `valor_escritura_uf` |
@@ -142,29 +142,29 @@ Tomando:
 
 Se calcula:
 
-1. `valor_tasacion_uf = precio_neto_uf / (1 - b_desc)`  
-   (si divisor <= 0, fallback a `precio_neto_uf` para evitar invalido)
+1. **Tasación depto (`valor_tasacion_uf`)**  
+   - Si `b_max` y `b_desc` son iguales (misma magnitud): `valor_tasacion_uf = precio_neto_uf` (caso carta tasación: beneficio = desc. adicional).  
+   - Si no: `valor_tasacion_uf = precio_neto_uf / (1 - b_desc)` si `(1 - b_desc) > 0`, si no fallback `precio_neto_uf`.
 
-2. `valor_escritura_base_uf = valor_tasacion_uf * (1 - b_max)`
+2. **Adicionales en escritura (UF)** — por ítem, luego suma:  
+   - Si `bono_aplica_adicionales = false`: `estacionamiento_uf + bodega_uf`.  
+   - Si `bono_aplica_adicionales = true` y `(1 - b_desc) > 0`:  
+     `estacionamiento_uf / (1 - b_desc) + bodega_uf / (1 - b_desc)`  
+     (repercusión del beneficio inmobiliario sobre cada adicional).  
+   - Si divisor ≤ 0: usar suma bruta `estacionamiento_uf + bodega_uf`.
 
-3. `adicionales_en_escritura_uf =`
-   - si `bono_aplica_adicionales = true`: `adicionales_uf * (1 - b_max)`
-   - si `bono_aplica_adicionales = false`: `adicionales_uf`
+3. `valor_escritura_uf = valor_tasacion_uf + adicionales_en_escritura_uf`.
 
-4. `valor_escritura_uf = valor_escritura_base_uf + adicionales_en_escritura_uf`
+4. `escrituracion_uf = valor_escritura_uf`.
 
-5. `escrituracion_uf = valor_escritura_uf`
-
-6. `beneficio_inmobiliario_uf = valor_tasacion_uf * b_desc`
+5. `beneficio_inmobiliario_uf = valor_tasacion_uf * b_desc`.
 
 ## 3.2 Pie
 
 1. `pie_total_uf = valor_escritura_uf * pie_pct`
 2. `pie_total_clp = pie_total_uf * uf_valor_clp`
 
-Desglose en pesos (upfront, cuotas antes/después, cuotón): hoy `calcularMontosDesglosePieClp` en `calculosPie.ts`. **La planilla Excel correcta usa otra base para esos % (ver §9).** El párrafo que sigue describe el código **actual** (erróneo vs Excel), no la regla de negocio definitiva.
-
-*Implementación actual (desalineada):* cada `*_pct` del desglose se aplica sobre `pie_total_uf`, se pasa a CLP y los tramos en cuotas dividen por `max(N, 1)`.
+Desglose en pesos (upfront, cuotas antes/después, cuotón): `calcularMontosDesglosePieClp` en `calculosPie.ts` aplica cada `*_pct` sobre **`valor_escritura_uf`** (equivalente a base CLP = valor escrituración × UF), y los tramos en cuotas dividen por `max(N, 1)`.
 
 ## 3.3 Hipotecario (sistema frances)
 

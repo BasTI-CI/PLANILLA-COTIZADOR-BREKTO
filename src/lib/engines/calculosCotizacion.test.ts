@@ -61,19 +61,44 @@ describe('calcularResultadosCotizacion', () => {
     )
   })
 
-  it('aplica tope sobre tasación y adicionales solo si bono_aplica_adicionales', () => {
+  it('sin adicionales: escrituración = tasación aunque haya descuento adicional (%)', () => {
+    const cot = cotEjemploPlanilla()
+    cot.propiedad.bono_max_pct = 0.1
+    const r = calcularResultadosCotizacion(cot, uf)
+    const tas = 2881.33 / 0.85
+    expect(r.valor_tasacion_uf).toBeCloseTo(tas, 2)
+    expect(r.valor_escritura_uf).toBeCloseTo(tas, 2)
+  })
+
+  it('con adicionales: escrituración = tasación + estac./bodega en escritura (÷(1−beneficio) si aplica)', () => {
     const cot = cotEjemploPlanilla()
     cot.propiedad.bono_max_pct = 0.1
     cot.propiedad.estacionamiento_uf = 100
     cot.propiedad.bono_aplica_adicionales = false
     const r1 = calcularResultadosCotizacion(cot, uf)
     const tas = 2881.33 / 0.85
-    const baseEsc = tas * 0.9
-    expect(r1.valor_escritura_uf).toBeCloseTo(baseEsc + 100, 2)
+    expect(r1.valor_escritura_uf).toBeCloseTo(tas + 100, 2)
 
     cot.propiedad.bono_aplica_adicionales = true
     const r2 = calcularResultadosCotizacion(cot, uf)
-    expect(r2.valor_escritura_uf).toBeCloseTo(baseEsc + 90, 2)
+    const adicEsc = 100 / 0.85
+    expect(r2.valor_escritura_uf).toBeCloseTo(tas + adicEsc, 2)
+  })
+
+  it('ejemplo manual: 10% lista, neto 3589,2; beneficio=desc adic 15%; est 200 bod 100 con beneficio en adicionales', () => {
+    const cot = cotEjemploPlanilla()
+    cot.propiedad.precio_lista_uf = 3988
+    cot.propiedad.descuento_uf = 398.8
+    cot.propiedad.precio_neto_uf = 3589.2
+    cot.propiedad.bono_descuento_pct = 0.15
+    cot.propiedad.bono_max_pct = 0.15
+    cot.propiedad.estacionamiento_uf = 200
+    cot.propiedad.bodega_uf = 100
+    cot.propiedad.bono_aplica_adicionales = true
+    const r = calcularResultadosCotizacion(cot, uf)
+    expect(r.valor_tasacion_uf).toBeCloseTo(3589.2, 2)
+    const adicEsc = 200 / 0.85 + 100 / 0.85
+    expect(r.valor_escritura_uf).toBeCloseTo(3589.2 + adicEsc, 2)
   })
 
   it('con beneficio 100% evita división por cero: tasación = precio neto', () => {

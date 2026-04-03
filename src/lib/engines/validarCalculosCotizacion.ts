@@ -1,5 +1,7 @@
 import type { Cotizacion, DatosPropiedad, ResultadosCotizacion } from '@/types'
 
+const EPS_PCT_EQ = 1e-9
+
 /** Tolerancia por defecto: coherente con `debugValorPropiedad100`. */
 const EPS_UF_DEFAULT = 0.02
 const EPS_PCT_DEFAULT = 0.0005
@@ -15,26 +17,26 @@ export interface FalloValidacion {
  * Replica §3.1 de `variables_calculo.md` (misma lógica que `calculosCotizacion`).
  * Sirve para contrastar el resultado del motor sin duplicar el archivo de cálculo.
  */
+function adicionalesEscrituraUfRecompute(propiedad: DatosPropiedad): number {
+  const est = propiedad.estacionamiento_uf
+  const bod = propiedad.bodega_uf
+  if (!propiedad.bono_aplica_adicionales) return est + bod
+  const d = 1 - propiedad.bono_descuento_pct
+  if (d <= 0) return est + bod
+  return est / d + bod / d
+}
+
 export function recomputarValorEscrituraUf(propiedad: DatosPropiedad): number {
-  const divisor_tasacion = 1 - propiedad.bono_descuento_pct
-  const valor_tasacion_uf =
-    divisor_tasacion > 0
-      ? propiedad.precio_neto_uf / divisor_tasacion
-      : propiedad.precio_neto_uf
-  const factorConBonoMax = 1 - propiedad.bono_max_pct
-  const valor_escritura_base_uf = valor_tasacion_uf * factorConBonoMax
-  const adicionales_uf = propiedad.estacionamiento_uf + propiedad.bodega_uf
-  const adicionales_en_escritura_uf = propiedad.bono_aplica_adicionales
-    ? adicionales_uf * factorConBonoMax
-    : adicionales_uf
-  return valor_escritura_base_uf + adicionales_en_escritura_uf
+  return recomputarValorTasacionUf(propiedad) + adicionalesEscrituraUfRecompute(propiedad)
 }
 
 export function recomputarValorTasacionUf(propiedad: DatosPropiedad): number {
-  const divisor_tasacion = 1 - propiedad.bono_descuento_pct
-  return divisor_tasacion > 0
-    ? propiedad.precio_neto_uf / divisor_tasacion
-    : propiedad.precio_neto_uf
+  const neto = propiedad.precio_neto_uf
+  const bDesc = propiedad.bono_descuento_pct
+  const bMax = propiedad.bono_max_pct
+  if (Math.abs(bMax - bDesc) < EPS_PCT_EQ) return neto
+  const divisor_tasacion = 1 - bDesc
+  return divisor_tasacion > 0 ? neto / divisor_tasacion : neto
 }
 
 /**

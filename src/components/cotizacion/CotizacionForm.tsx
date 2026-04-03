@@ -99,10 +99,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   if (!cot) return null
 
-  // Resultados calculados
-  const res = cot.activa
-    ? calcularResultadosCotizacion(cot, uf)
-    : null
+  // Resultados para la UI (siempre; no depender de `activa`, que solo marca cotización “en uso” en el store)
+  const res = calcularResultadosCotizacion(cot, uf)
 
   const precioListaUf = p.precio_lista_uf
   const descuentoUfActual = p.descuento_uf
@@ -119,7 +117,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     monto_cuoton_clp: montoCuotonClp,
   } = calcularMontosDesglosePieClp(valorEscrituraUf, pie, uf)
 
-  const dbg = res ? debugValorPropiedad100(cot, res) : null
+  const dbg = cot.activa ? debugValorPropiedad100(cot, res) : null
 
   const filaDebug = (ok: boolean, titulo: string, detalle: string) => (
     <div
@@ -406,20 +404,11 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
 
-          {res && (
+          {cot.activa && (
             <>
               <SectionHeading>TASACIÓN Y ESCRITURACIÓN</SectionHeading>
               <div className="form-group">
-                <label className="form-label">Monto tasación ($)</label>
-                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 700 }}>
-                  {formatCLP(res.valor_tasacion_uf * uf)}
-                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    {formatUF(res.valor_tasacion_uf)} · depto repercutido
-                  </div>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Valor tasación (UF)</label>
+                <label className="form-label">Valor tasación depto (UF)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
                   {formatUF(res.valor_tasacion_uf)}
                   <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
@@ -428,20 +417,11 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Monto escrituración ($)</label>
-                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 700 }}>
-                  {formatCLP(res.valor_escritura_uf * uf)}
-                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    Base pie, crédito y desglose cuotas (valor escrituración × UF)
-                  </div>
-                </div>
-              </div>
-              <div className="form-group">
                 <label className="form-label">Valor escrituración (UF)</label>
                 <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
                   {formatUF(res.valor_escritura_uf)}
                   <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    {formatCLP(res.valor_escritura_uf * uf)} · depto + adicionales según reglas
+                    {formatCLP(res.valor_escritura_uf * uf)} · tasación depto + estac./bodega en escritura (ver beneficio sobre adicionales)
                   </div>
                 </div>
               </div>
@@ -573,7 +553,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
 
-          {res && (
+          {cot.activa && (
             <>
               <SectionHeading>RESUMEN FINANCIERO</SectionHeading>
               <div className="form-group">
@@ -605,17 +585,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
         </div>
         <div style={rowGridStyle}>
           <SectionHeading>PARÁMETROS Y RESULTADO</SectionHeading>
-          {res && (
-            <div className="form-group">
-              <label className="form-label">Valor escrituración (UF)</label>
-              <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-                {formatUF(res.valor_escritura_uf)}
-                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                  {formatCLP(res.valor_escritura_uf * uf)}
-                </div>
+          <div className="form-group">
+            <label className="form-label">Valor escrituración (UF)</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {formatUF(res.valor_escritura_uf)}
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                {formatCLP(res.valor_escritura_uf * uf)}
               </div>
             </div>
-          )}
+          </div>
           <div className="form-group">
             <label className="form-label">% crédito (LTV)</label>
             <div className="form-input-group">
@@ -625,17 +603,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               <span className="suffix">%</span>
             </div>
           </div>
-          {res && (
-            <div className="form-group">
-              <label className="form-label">PIE a documentar</label>
-              <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-                {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% · {formatUF(pieTotalUf)}
-                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                  {formatCLP(pieTotalUf * uf)}
-                </div>
+          <div className="form-group">
+            <label className="form-label">PIE a documentar</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% · {formatUF(pieTotalUf)}
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                {formatCLP(pieTotalUf * uf)}
               </div>
             </div>
-          )}
+          </div>
           <div className="form-group">
             <label className="form-label">Tasa interés anual (%)</label>
             <div className="form-input-group">
@@ -654,28 +630,26 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               <span className="suffix">años</span>
             </div>
           </div>
-          {res && res.valor_escritura_uf > 0 && (
-            <>
-              <div className="form-group">
-                <label className="form-label">Monto dividendo mensual (UF)</label>
-                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-                  {formatUF(res.hipotecario.dividendo_total_uf)}
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Monto dividendo mensual ($)</label>
-                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-                  {formatCLP(res.hipotecario.dividendo_total_clp)}
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Dividendo / valor escrituración (%)</label>
-                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-                  {((res.hipotecario.dividendo_total_uf / res.valor_escritura_uf) * 100).toLocaleString('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}%
-                </div>
-              </div>
-            </>
-          )}
+          <div className="form-group">
+            <label className="form-label">Monto dividendo mensual (UF)</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {formatUF(res.hipotecario.dividendo_total_uf)}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Monto dividendo mensual ($)</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {formatCLP(res.hipotecario.dividendo_total_clp)}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Dividendo / valor escrituración (%)</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+              {res.valor_escritura_uf > 0
+                ? `${((res.hipotecario.dividendo_total_uf / res.valor_escritura_uf) * 100).toLocaleString('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}%`
+                : '—'}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -838,8 +812,12 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             )}
             {filaDebug(
               dbg.okNetoCoherenteConBeneficioInmobiliario,
-              'Precio neto = Valor tasación × (1 − Beneficio inmob. %) — coherencia tasación',
-              `Tasación ${formatUF(dbg.valor_tasacion_uf)} × (1 − ${(p.bono_descuento_pct * 100).toFixed(2)}%) = ${formatUF(dbg.valor_tasacion_uf * (1 - p.bono_descuento_pct))} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
+              Math.abs(p.bono_max_pct - p.bono_descuento_pct) < 1e-6
+                ? 'Precio neto = Valor tasación depto (% adic. = beneficio inmob.)'
+                : 'Precio neto = Valor tasación × (1 − Beneficio inmob. %)',
+              Math.abs(p.bono_max_pct - p.bono_descuento_pct) < 1e-6
+                ? `Tasación ${formatUF(dbg.valor_tasacion_uf)} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
+                : `Tasación ${formatUF(dbg.valor_tasacion_uf)} × (1 − ${(p.bono_descuento_pct * 100).toFixed(2)}%) = ${formatUF(dbg.valor_tasacion_uf * (1 - p.bono_descuento_pct))} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
             )}
             {filaDebug(
               dbg.okPieMasCreditoPct,
@@ -855,7 +833,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
         </div>
       )}
 
-      {res && (
+      {cot.activa && (
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">📋 Resultado</h3>
