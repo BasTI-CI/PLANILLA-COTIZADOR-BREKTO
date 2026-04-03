@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useProyectos, useUnidades } from '@/hooks/useSupabase'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
+import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
+import { debugValorPropiedad100 } from '@/lib/engines/debugValorPropiedad100'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
 import type { DatosPropiedad } from '@/types'
 
@@ -9,7 +11,34 @@ interface Props { cotizacionId: number }
 
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
-const formatPct = (v: number) => `${(v * 100).toFixed(1)}%`
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        gridColumn: '1 / -1',
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        color: 'var(--color-gold)',
+        marginTop: 4,
+        marginBottom: 2,
+        paddingBottom: 8,
+        borderBottom: '1px solid rgba(212,168,67,0.28)',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Grilla lectura izquierda → derecha */
+const rowGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))',
+  gap: 12,
+  alignItems: 'start',
+}
 
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
@@ -57,9 +86,10 @@ export default function CotizacionForm({ cotizacionId }: Props) {
       unidad_entrega: unidad.entrega,
       precio_lista_uf: unidad.precio_lista_uf,
       descuento_uf: unidad.descuento_uf,
-      precio_compra_uf: unidad.precio_compra_uf,
+      precio_neto_uf: unidad.precio_neto_uf,
       bono_descuento_pct: unidad.bono_descuento_pct,
       bono_max_pct: unidad.bono_max_pct,
+      bono_aplica_adicionales: unidad.bono_aplica_adicionales,
       estacionamiento_uf: unidad.estacionamiento_uf,
       bodega_uf: unidad.bodega_uf,
       reserva_clp: 100_000,
@@ -73,6 +103,47 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const res = cot.activa
     ? calcularResultadosCotizacion(cot, uf)
     : null
+
+  const precioListaUf = p.precio_lista_uf
+  const descuentoUfActual = p.descuento_uf
+  const precioNetoDisplay = modoManual ? p.precio_neto_uf : precioListaUf - descuentoUfActual
+  const descuentoPctLista =
+    precioListaUf > 0 ? (descuentoUfActual / precioListaUf) * 100 : 0
+
+  const pieTotalUf = res?.pie_total_uf ?? 0
+  const valorEscrituraUf = res?.valor_escritura_uf ?? 0
+  const {
+    monto_upfront_clp: montoUpfrontClp,
+    monto_cuota_antes_clp: montoCuotaAntesClp,
+    monto_cuota_despues_clp: montoCuotaDespuesClp,
+    monto_cuoton_clp: montoCuotonClp,
+  } = calcularMontosDesglosePieClp(valorEscrituraUf, pie, uf)
+
+  const dbg = res ? debugValorPropiedad100(cot, res) : null
+
+  const filaDebug = (ok: boolean, titulo: string, detalle: string) => (
+    <div
+      key={titulo}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.1)',
+        border: `1px solid ${ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
+        fontSize: 12,
+      }}
+    >
+      <span style={{ fontWeight: 800, color: ok ? '#10b981' : '#ef4444', flexShrink: 0 }}>
+        {ok ? '100%' : '≠'}
+      </span>
+      <div>
+        <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>{titulo}</div>
+        <div style={{ color: 'var(--color-text-muted)', marginTop: 2, lineHeight: 1.35 }}>{detalle}</div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -137,13 +208,16 @@ export default function CotizacionForm({ cotizacionId }: Props) {
         )}
       </div>
 
-      {/* ── Datos de la propiedad (manual o pre-cargado) ── */}
+      {/* ── Cotización: antecedentes, precios, resumen ── */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">🏢 Datos de la Unidad</h3>
+          <h3 className="card-title">🏢 Cotización</h3>
           {cot.activa && <span className="badge badge-green">✓ Activa</span>}
         </div>
-        <div className="card-grid-3">
+
+        <div style={rowGridStyle}>
+          <SectionHeading>ANTECEDENTES PROPIEDAD</SectionHeading>
+
           {[
             { label: 'Proyecto', key: 'proyecto_nombre', type: 'text' },
             { label: 'Comuna', key: 'proyecto_comuna', type: 'text' },
@@ -179,128 +253,395 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               )}
             </div>
           ))}
-        </div>
 
-        <div className="card-grid-3" style={{ marginTop: 12 }}>
-          <div className="form-group">
-            <label className="form-label">Precio Lista (UF)</label>
-            <FormattedNumberInput className="form-input" value={p.precio_lista_uf}
-              readOnly={!modoManual} decimals={2}
-              onChange={(val) => setPropiedad(cotizacionId, { precio_lista_uf: val })} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Descuento (UF)</label>
-            <FormattedNumberInput className="form-input" value={p.descuento_uf}
-              readOnly={!modoManual} decimals={2}
-              onChange={(val) => setPropiedad(cotizacionId, { descuento_uf: val })} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Precio Compra (UF)</label>
-            <FormattedNumberInput className="form-input"
-              value={modoManual ? p.precio_compra_uf : p.precio_lista_uf - p.descuento_uf}
-              readOnly={!modoManual} decimals={2}
-              onChange={(val) => setPropiedad(cotizacionId, { precio_compra_uf: val })} />
-          </div>
+          <SectionHeading>DETALLE PRECIOS Y DESCUENTOS</SectionHeading>
 
-          {/* ── Bonos comerciales (en %) ── */}
+          <div className="form-group">
+            <label className="form-label">Lista (UF)</label>
+            <FormattedNumberInput
+              className="form-input"
+              value={p.precio_lista_uf}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => {
+                const d = p.descuento_uf
+                setPropiedad(cotizacionId, {
+                  precio_lista_uf: val,
+                  precio_neto_uf: Math.round((val - d) * 100) / 100,
+                })
+              }}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Dcto. (% s/ lista)</label>
+            <div className="form-input-group">
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={descuentoPctLista}
+                readOnly={!modoManual}
+                decimals={2}
+                onChange={(val) => {
+                  const lista = p.precio_lista_uf
+                  const pct = val / 100
+                  const duf = Math.round(lista * pct * 100) / 100
+                  setPropiedad(cotizacionId, {
+                    descuento_uf: duf,
+                    precio_neto_uf: Math.round((lista - duf) * 100) / 100,
+                  })
+                }}
+                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+              />
+              <span className="suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Dcto. (UF)</label>
+            <FormattedNumberInput
+              className="form-input"
+              value={p.descuento_uf}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => {
+                const lista = p.precio_lista_uf
+                setPropiedad(cotizacionId, {
+                  descuento_uf: val,
+                  precio_neto_uf: Math.round((lista - val) * 100) / 100,
+                })
+              }}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Precio neto (UF)</label>
+            <FormattedNumberInput
+              className="form-input"
+              value={precioNetoDisplay}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => {
+                const lista = p.precio_lista_uf
+                const duf = Math.round((lista - val) * 100) / 100
+                setPropiedad(cotizacionId, { precio_neto_uf: val, descuento_uf: Math.max(0, duf) })
+              }}
+            />
+          </div>
           <div className="form-group">
             <label className="form-label">Descuento adicional (%)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={p.bono_descuento_pct * 100}
-                readOnly={!modoManual} decimals={2}
-                onChange={(val) => setPropiedad(cotizacionId, { bono_descuento_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={p.bono_max_pct * 100}
+                readOnly={!modoManual}
+                decimals={2}
+                onChange={(val) => setPropiedad(cotizacionId, { bono_max_pct: val / 100 } as Partial<DatosPropiedad>)}
+                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Bono pie máximo (%)</label>
+            <label className="form-label">Beneficio inmobiliario (%)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={p.bono_max_pct * 100}
-                readOnly={!modoManual} decimals={2}
-                onChange={(val) => setPropiedad(cotizacionId, { bono_max_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={p.bono_descuento_pct * 100}
+                readOnly={!modoManual}
+                decimals={2}
+                onChange={(val) => setPropiedad(cotizacionId, { bono_descuento_pct: val / 100 } as Partial<DatosPropiedad>)}
+                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+              />
               <span className="suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Estacionamiento (UF)</label>
+            <FormattedNumberInput
+              className="form-input"
+              value={p.estacionamiento_uf}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => setPropiedad(cotizacionId, { estacionamiento_uf: val })}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Bodega (UF)</label>
+            <FormattedNumberInput
+              className="form-input"
+              value={p.bodega_uf}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => setPropiedad(cotizacionId, { bodega_uf: val })}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Aplicar beneficio inmob. % sobre adicionales</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No</span>
+              <button
+                type="button"
+                onClick={() => setPropiedad(cotizacionId, { bono_aplica_adicionales: !p.bono_aplica_adicionales })}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  background: p.bono_aplica_adicionales ? 'var(--color-success)' : 'var(--color-error)',
+                  position: 'relative', transition: 'background 0.25s',
+                }}
+                title={p.bono_aplica_adicionales ? 'Sí: descuento adicional (%) también reduce estacionamiento y bodega en escritura' : 'No: adicionales al valor pleno en escritura'}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: p.bono_aplica_adicionales ? 22 : 2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    transition: 'left 0.25s',
+                  }}
+                />
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sí</span>
             </div>
           </div>
 
-          {/* ── Pie y desglose ── */}
+          {res && (
+            <>
+              <SectionHeading>TASACIÓN Y ESCRITURACIÓN</SectionHeading>
+              <div className="form-group">
+                <label className="form-label">Monto tasación ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 700 }}>
+                  {formatCLP(res.valor_tasacion_uf * uf)}
+                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    {formatUF(res.valor_tasacion_uf)} · depto repercutido
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Valor tasación (UF)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                  {formatUF(res.valor_tasacion_uf)}
+                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    {formatCLP(res.valor_tasacion_uf * uf)}
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Monto escrituración ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 700 }}>
+                  {formatCLP(res.valor_escritura_uf * uf)}
+                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    Base pie, crédito y desglose cuotas (valor escrituración × UF)
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Valor escrituración (UF)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                  {formatUF(res.valor_escritura_uf)}
+                  <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    {formatCLP(res.valor_escritura_uf * uf)} · depto + adicionales según reglas
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <SectionHeading>PIE Y FORMA DE PAGO</SectionHeading>
           <div className="form-group">
-            <label className="form-label">Pie total (%)</label>
+            <label className="form-label">PIE a documentar (%)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={pie.pie_pct * 100} decimals={2}
-                onChange={(val) => setPie(cotizacionId, { pie_pct: val / 100 })} style={{width: '100%'}} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={pie.pie_pct * 100}
+                decimals={2}
+                onChange={(val) => setPie(cotizacionId, { pie_pct: val / 100 })}
+                style={{ width: '100%' }}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Upfront / Abono inicial (%)</label>
+            <label className="form-label">Upfront (% s/ valor escrituración)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={pie.upfront_pct * 100} decimals={2}
-                onChange={(val) => setPie(cotizacionId, { upfront_pct: val / 100 })} style={{width: '100%'}} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={pie.upfront_pct * 100}
+                decimals={2}
+                onChange={(val) => setPie(cotizacionId, { upfront_pct: val / 100 })}
+                style={{ width: '100%' }}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Cuotas antes entrega (%)</label>
+            <label className="form-label">% antes entrega (s/ valor escrituración)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={pie.cuotas_antes_entrega_pct * 100} decimals={2}
-                onChange={(val) => setPie(cotizacionId, { cuotas_antes_entrega_pct: val / 100 })} style={{width: '100%'}} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={pie.cuotas_antes_entrega_pct * 100}
+                decimals={2}
+                onChange={(val) => setPie(cotizacionId, { cuotas_antes_entrega_pct: val / 100 })}
+                style={{ width: '100%' }}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">N° cuotas antes entrega</label>
-            <FormattedNumberInput min={0} max={120} className="form-input"
-              value={pie.cuotas_antes_entrega_n} decimals={0}
-              onChange={(val) => setPie(cotizacionId, { cuotas_antes_entrega_n: val })} />
+            <FormattedNumberInput
+              min={0}
+              max={120}
+              className="form-input"
+              value={pie.cuotas_antes_entrega_n}
+              decimals={0}
+              onChange={(val) => setPie(cotizacionId, { cuotas_antes_entrega_n: val })}
+            />
           </div>
           <div className="form-group">
-            <label className="form-label">Cuotas después entrega (%)</label>
+            <label className="form-label">% después entrega (s/ valor escrituración)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={100}
-                value={pie.cuotas_despues_entrega_pct * 100} decimals={2}
-                onChange={(val) => setPie(cotizacionId, { cuotas_despues_entrega_pct: val / 100 })} style={{width: '100%'}} />
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={pie.cuotas_despues_entrega_pct * 100}
+                decimals={2}
+                onChange={(val) => setPie(cotizacionId, { cuotas_despues_entrega_pct: val / 100 })}
+                style={{ width: '100%' }}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">N° cuotas después entrega</label>
-            <FormattedNumberInput min={0} max={120} className="form-input"
-              value={pie.cuotas_despues_entrega_n} decimals={0}
-              onChange={(val) => setPie(cotizacionId, { cuotas_despues_entrega_n: val })} />
+            <FormattedNumberInput
+              min={0}
+              max={120}
+              className="form-input"
+              value={pie.cuotas_despues_entrega_n}
+              decimals={0}
+              onChange={(val) => setPie(cotizacionId, { cuotas_despues_entrega_n: val })}
+            />
           </div>
           <div className="form-group">
-            <label className="form-label">N° cuotas totales pie</label>
-            <FormattedNumberInput min={0} max={120} className="form-input" value={pie.pie_n_cuotas_total} decimals={0}
-              onChange={(val) => setPie(cotizacionId, { pie_n_cuotas_total: val })} />
+            <label className="form-label">Cuotón (% s/ valor escrituración)</label>
+            <div className="form-input-group">
+              <FormattedNumberInput
+                min={0}
+                max={100}
+                value={pie.cuoton_pct * 100}
+                decimals={2}
+                onChange={(val) => setPie(cotizacionId, { cuoton_pct: val / 100 })}
+                style={{ width: '100%' }}
+              />
+              <span className="suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">N° cuotas cuotón</label>
+            <FormattedNumberInput
+              min={0}
+              max={120}
+              className="form-input"
+              value={pie.cuoton_n_cuotas}
+              decimals={0}
+              onChange={(val) => setPie(cotizacionId, { cuoton_n_cuotas: val })}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cuotas totales pie</label>
+            <FormattedNumberInput
+              min={0}
+              max={120}
+              className="form-input"
+              value={pie.pie_n_cuotas_total}
+              decimals={0}
+              onChange={(val) => setPie(cotizacionId, { pie_n_cuotas_total: val })}
+            />
           </div>
           <div className="form-group">
             <label className="form-label">Reserva ($)</label>
-            <FormattedNumberInput className="form-input" value={p.reserva_clp} decimals={0}
-              onChange={(val) => setPropiedad(cotizacionId, { reserva_clp: val })} />
+            <FormattedNumberInput
+              className="form-input"
+              value={p.reserva_clp}
+              decimals={0}
+              onChange={(val) => setPropiedad(cotizacionId, { reserva_clp: val })}
+            />
           </div>
+
+          {res && (
+            <>
+              <SectionHeading>RESUMEN FINANCIERO</SectionHeading>
+              <div className="form-group">
+                <label className="form-label">Monto upfront ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoUpfrontClp)}</div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Monto cuota antes ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotaAntesClp)}</div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Monto cuota después ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotaDespuesClp)}</div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Monto cuotón ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>{formatCLP(montoCuotonClp)}</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ── Parámetros hipotecarios ── */}
+      {/* ── Crédito hipotecario ── */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">🏦 Crédito Hipotecario</h3>
+          <h3 className="card-title">🏦 Crédito hipotecario</h3>
           <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sistema Francés + seguros</span>
         </div>
-        <div className="card-grid-3">
+        <div style={rowGridStyle}>
+          <SectionHeading>PARÁMETROS Y RESULTADO</SectionHeading>
+          {res && (
+            <div className="form-group">
+              <label className="form-label">Valor escrituración (UF)</label>
+              <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                {formatUF(res.valor_escritura_uf)}
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  {formatCLP(res.valor_escritura_uf * uf)}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="form-group">
-            <label className="form-label">Tasa Anual (%)</label>
+            <label className="form-label">% crédito (LTV)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={1} max={20}
+              <FormattedNumberInput min={50} max={100}
+                value={hip.hipotecario_aprobacion_pct * 100} decimals={2}
+                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_aprobacion_pct: val / 100 })} style={{ width: '100%' }} />
+              <span className="suffix">%</span>
+            </div>
+          </div>
+          {res && (
+            <div className="form-group">
+              <label className="form-label">PIE a documentar</label>
+              <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% · {formatUF(pieTotalUf)}
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  {formatCLP(pieTotalUf * uf)}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Tasa interés anual (%)</label>
+            <div className="form-input-group">
+              <FormattedNumberInput min={0} max={20}
                 value={hip.hipotecario_tasa_anual * 100} decimals={2}
-                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_tasa_anual: val / 100 })} style={{width: '100%'}} />
+                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_tasa_anual: val / 100 })} style={{ width: '100%' }} />
               <span className="suffix">%</span>
             </div>
           </div>
@@ -309,51 +650,68 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             <div className="form-input-group">
               <FormattedNumberInput min={5} max={30}
                 value={hip.hipotecario_plazo_anos} decimals={0}
-                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_plazo_anos: val })} style={{width: '100%'}} />
+                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_plazo_anos: val })} style={{ width: '100%' }} />
               <span className="suffix">años</span>
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">% Financiamiento</label>
-            <div className="form-input-group">
-              <FormattedNumberInput min={50} max={100}
-                value={hip.hipotecario_aprobacion_pct * 100} decimals={2}
-                onChange={(val) => setHipotecario(cotizacionId, { hipotecario_aprobacion_pct: val / 100 })} style={{width: '100%'}} />
-              <span className="suffix">%</span>
-            </div>
-          </div>
+          {res && res.valor_escritura_uf > 0 && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Monto dividendo mensual (UF)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                  {formatUF(res.hipotecario.dividendo_total_uf)}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Monto dividendo mensual ($)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                  {formatCLP(res.hipotecario.dividendo_total_clp)}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Dividendo / valor escrituración (%)</label>
+                <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
+                  {((res.hipotecario.dividendo_total_uf / res.valor_escritura_uf) * 100).toLocaleString('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}%
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ── Rentabilidad (Renta Larga / Corta) ── */}
+      {/* ── Rentabilidad ── */}
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">🏘️ Rentabilidad</h3>
-          {/* Selector mutuamente excluyente */}
           <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
-            {(['larga', 'corta'] as const).map((tipo) => (
-              <button
-                key={tipo}
-                onClick={() => setRentabilidad(cotizacionId, { tipo_renta: tipo })}
-                style={{
-                  padding: '6px 16px', border: 'none', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 600,
-                  background: cot.rentabilidad.tipo_renta === tipo
-                    ? tipo === 'larga' ? 'var(--color-accent)' : 'var(--color-gold)'
-                    : 'transparent',
-                  color: cot.rentabilidad.tipo_renta === tipo
-                    ? tipo === 'larga' ? '#fff' : '#0a0e1a'
-                    : 'var(--color-text-muted)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {tipo === 'larga' ? '🏠 Renta Larga' : '📱 Renta Corta'}
-              </button>
-            ))}
+            {(['larga', 'corta'] as const).map((tipo) => {
+              const active = cot.rentabilidad.tipo_renta === tipo
+              return (
+                <button
+                  key={tipo}
+                  type="button"
+                  onClick={() => setRentabilidad(cotizacionId, { tipo_renta: tipo })}
+                  style={{
+                    padding: '6px 14px', border: 'none', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 700,
+                    background: active
+                      ? tipo === 'larga' ? 'var(--color-success)' : 'var(--color-gold)'
+                      : 'rgba(255,255,255,0.04)',
+                    color: active
+                      ? tipo === 'larga' ? '#fff' : '#0a0e1a'
+                      : 'var(--color-text-muted)',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {tipo === 'larga' ? `LARGA${active ? ' · Ok' : ''}` : `CORTA${active ? ' · Ok' : ''}`}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        <div className="card-grid-3">
+        <div style={rowGridStyle}>
+          <SectionHeading>RENTABILIDAD</SectionHeading>
           {/* Plusvalía — siempre visible */}
           <div className="form-group">
             <label className="form-label">Plusvalía anual (%)</label>
@@ -399,7 +757,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   onChange={(val) => setRentabilidad(cotizacionId, { airbnb_ingreso_bruto_clp: val })} />
               </div>
               <div className="form-group">
-                <label className="form-label">Comisión plataforma (%)</label>
+                <label className="form-label">Administración (%)</label>
                 <div className="form-input-group">
                   <FormattedNumberInput min={0} max={100}
                     value={cot.rentabilidad.airbnb_admin_pct * 100} decimals={2}
@@ -408,7 +766,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Gastos comunes ($)</label>
+                <label className="form-label">Costos mensuales ($)</label>
                 <FormattedNumberInput min={0} className="form-input" decimals={0}
                   value={cot.rentabilidad.gastos_comunes_clp || 0}
                   onChange={(val) => setRentabilidad(cotizacionId, { gastos_comunes_clp: val })} />
@@ -443,9 +801,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   <div style={{ gridColumn: '1 / -1', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
                     <div><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Bruto</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.airbnb_ingreso_bruto_clp)}</div></div>
                     <span style={{ color: 'var(--color-text-muted)' }}>−</span>
-                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Admin</div><div style={{ fontWeight: 700 }}>{formatCLP(admin)}</div></div>
+                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Administración</div><div style={{ fontWeight: 700 }}>{formatCLP(admin)}</div></div>
                     <span style={{ color: 'var(--color-text-muted)' }}>−</span>
-                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>G. Comunes</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.gastos_comunes_clp)}</div></div>
+                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Costos mensuales</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.gastos_comunes_clp)}</div></div>
                     <span style={{ color: 'var(--color-text-muted)', fontSize: 18, marginLeft: 'auto', marginRight: 8 }}>=</span>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 10, color: '#10b981' }}>Neto al flujo</div>
@@ -460,6 +818,43 @@ export default function CotizacionForm({ cotizacionId }: Props) {
       </div>
 
       {/* ── Resultados ── */}
+      {dbg && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">🔎 Depurador 100% valor propiedad</h3>
+            <span className={dbg.allOk ? 'badge badge-green' : 'badge'} style={dbg.allOk ? {} : { background: 'rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+              {dbg.allOk ? 'Todo OK' : 'Revisar diferencias'}
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+            Criterios alineados con <code style={{ fontSize: 10 }}>variables_calculo.md</code>: lista − dcto. y cadena beneficio inmobiliario / tasación;
+            PIE a documentar (%) + % crédito = 100%; y en UF, pie + crédito = valor escrituración.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filaDebug(
+              dbg.okListaMenosDescuentoIgualNeto,
+              'Lista − Descuento (UF) = Precio neto',
+              `Lista ${formatUF(precioListaUf)} − Desc ${formatUF(descuentoUfActual)} = ${formatUF(precioListaUf - descuentoUfActual)} · Neto cargado ${formatUF(p.precio_neto_uf)} · Δ ${dbg.deltaListaNetoUf.toFixed(4)} UF`
+            )}
+            {filaDebug(
+              dbg.okNetoCoherenteConBeneficioInmobiliario,
+              'Precio neto = Valor tasación × (1 − Beneficio inmob. %) — coherencia tasación',
+              `Tasación ${formatUF(dbg.valor_tasacion_uf)} × (1 − ${(p.bono_descuento_pct * 100).toFixed(2)}%) = ${formatUF(dbg.valor_tasacion_uf * (1 - p.bono_descuento_pct))} · Neto ${formatUF(dbg.precio_neto_uf)} · Δ ${dbg.deltaNetoTasacionUf.toFixed(4)} UF`
+            )}
+            {filaDebug(
+              dbg.okPieMasCreditoPct,
+              'PIE a documentar (%) + % crédito (LTV) = 100%',
+              `${(pie.pie_pct * 100).toFixed(2)}% + ${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}% = ${(dbg.sumaPieYLtv * 100).toFixed(2)}% · Δ ${(dbg.deltaPct * 100).toFixed(3)} pt`
+            )}
+            {filaDebug(
+              dbg.okPieMasCreditoUfIgualEscritura,
+              'Pie (UF) + Crédito (UF) = Valor escrituración (UF)',
+              `${formatUF(dbg.pie_total_uf)} + ${formatUF(dbg.monto_credito_uf)} = ${formatUF(dbg.pie_total_uf + dbg.monto_credito_uf)} · Escritura ${formatUF(dbg.valor_escritura_uf)} · Δ ${dbg.deltaPieCreditoEscrituraUf.toFixed(4)} UF`
+            )}
+          </div>
+        </div>
+      )}
+
       {res && (
         <div className="card">
           <div className="card-header">
@@ -467,12 +862,12 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             <div className="stat-item">
-              <span className="stat-label">Precio Compra</span>
-              <span className="stat-value gold">{formatUF(res.hipotecario.monto_credito_uf / hip.hipotecario_aprobacion_pct)}</span>
-              <span className="stat-sub">{formatCLP((res.hipotecario.monto_credito_uf / hip.hipotecario_aprobacion_pct) * uf)}</span>
+              <span className="stat-label">Precio Neto</span>
+              <span className="stat-value gold">{formatUF(p.precio_neto_uf)}</span>
+              <span className="stat-sub">{formatCLP(p.precio_neto_uf * uf)}</span>
             </div>
             <div className="stat-item">
-              <span className="stat-label">Monto Escrituración</span>
+              <span className="stat-label">Valor escrituración (UF)</span>
               <span className="stat-value">{formatUF(res.escrituracion_uf)}</span>
               <span className="stat-sub">{formatCLP(res.escrituracion_uf * uf)}</span>
             </div>

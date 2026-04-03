@@ -45,9 +45,10 @@ function rowToUnidad(row: StockRow): UnidadSupabase {
     entrega: 'A convenir',
     precio_lista_uf: row.precio,
     descuento_uf: Math.round((row.precio - row.precio_dcto) * 100) / 100,
-    precio_compra_uf: row.precio_dcto,
+    precio_neto_uf: row.precio_dcto,
     bono_descuento_pct: row.dcto,
     bono_max_pct: row.bono10,          // bono10 = bono máximo
+    bono_aplica_adicionales: false,
     pie_pct: 0.20,                     // default 20% (ajustar cuando se tenga dato real)
     estacionamiento_uf: 0,
     bodega_uf: 0,

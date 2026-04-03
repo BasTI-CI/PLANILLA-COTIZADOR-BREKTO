@@ -19,27 +19,52 @@ export function calcularResultadosCotizacion(
   uf_valor_clp: number
 ): ResultadosCotizacion {
   const { propiedad, pie, hipotecario, rentabilidad } = cot
+  const precio_neto_uf = propiedad.precio_neto_uf
+  const bono_descuento_pct = propiedad.bono_descuento_pct
+  const bono_max_pct = propiedad.bono_max_pct
 
-  // 1. Bono pie (UF)
-  const bono_pie_uf = propiedad.precio_compra_uf * pie.pie_pct
+  // Normalizamos bono_descuento_pct para evitar divisiones inválidas.
+  const divisor_tasacion = 1 - bono_descuento_pct
+  const valor_tasacion_uf =
+    divisor_tasacion > 0 ? (precio_neto_uf / divisor_tasacion) : precio_neto_uf
 
-  // 2. Monto de escrituración = precio compra + bono pie
-  const escrituracion_uf = propiedad.precio_compra_uf + bono_pie_uf
+  const factorConBonoMax = 1 - bono_max_pct
+  const valor_escritura_base_uf = valor_tasacion_uf * factorConBonoMax
+  const adicionales_uf = propiedad.estacionamiento_uf + propiedad.bodega_uf
 
-  // 3. Pie total = precio_compra × % pie
-  const pie_total_uf = propiedad.precio_compra_uf * pie.pie_pct
+  // Switch de negocio: aplica tope sobre tasación también a adicionales o no.
+  const adicionales_en_escritura_uf =
+    propiedad.bono_aplica_adicionales
+      ? adicionales_uf * factorConBonoMax
+      : adicionales_uf
+
+  // Valor de escrituración como base de pie e hipoteca.
+  const valor_escritura_uf = valor_escritura_base_uf + adicionales_en_escritura_uf
+  const escrituracion_uf = valor_escritura_uf
+
+  // Monto UF = valor_tasacion_uf * bono_descuento_pct (resultado `beneficio_inmobiliario_uf`).
+  const beneficio_inmobiliario_uf = valor_tasacion_uf * bono_descuento_pct
+
+  // Pie total sobre valor de escrituración.
+  const pie_total_uf = valor_escritura_uf * pie.pie_pct
   const pie_total_clp = pie_total_uf * uf_valor_clp
 
-  // 4. Simulador hipotecario
+  // Validación de consistencia pie + LTV = 100%.
+  const pctTotal = pie.pie_pct + hipotecario.hipotecario_aprobacion_pct
+  if (Math.abs(pctTotal - 1) > 0.0001) {
+    console.warn('Revisar porcentajes ya que son diferentes a 100%')
+  }
+
+  // Simulador hipotecario sobre valor de escrituración.
   const hipResult = calcularHipotecario(
-    propiedad.precio_compra_uf,
+    valor_escritura_uf,
     hipotecario,
     uf_valor_clp
   )
 
   // 5. Plusvalía / venta
   const plusvalia = calcularPlusvalia(
-    propiedad.precio_compra_uf,
+    valor_escritura_uf,
     pie_total_uf,
     rentabilidad.plusvalia_anual_pct,
     rentabilidad.plusvalia_anos,
@@ -50,14 +75,16 @@ export function calcularResultadosCotizacion(
   const arriendo = calcularArriendo(
     rentabilidad,
     hipResult.dividendo_total_uf,
-    propiedad.precio_compra_uf,
+    valor_escritura_uf,
     uf_valor_clp
   )
 
   return {
     cotizacion_id: cot.id,
     escrituracion_uf,
-    bono_pie_uf,
+    valor_tasacion_uf,
+    valor_escritura_uf,
+    beneficio_inmobiliario_uf,
     pie_total_uf,
     pie_total_clp,
     hipotecario: hipResult,
@@ -71,7 +98,7 @@ export function calcularResultadosCotizacion(
 // Replicado de Simulador 1 col B + G/H/I/J/K/L/M/N/O
 // ─────────────────────────────────────────────────────────────────
 export function calcularHipotecario(
-  precio_compra_uf: number,
+  valor_escritura_uf: number,
   hip: Cotizacion['hipotecario'],
   uf_valor_clp: number
 ): ResultadosHipotecario {
@@ -84,17 +111,36 @@ export function calcularHipotecario(
     hipotecario_tasa_seg_vida_pct,
   } = hip
 
-  const monto_credito_uf = precio_compra_uf * hipotecario_aprobacion_pct
+  const monto_credito_uf = valor_escritura_uf * hipotecario_aprobacion_pct
   const monto_credito_clp = monto_credito_uf * uf_valor_clp
 
-  const n_meses = hipotecario_plazo_anos * 12
+  const n_meses = Math.max(0, Math.round(hipotecario_plazo_anos * 12))
   const tasa_mensual = hipotecario_tasa_anual / 12
 
-  // Cuota fija sistema francés (PMT)
-  // PMT = PV × r / (1 - (1+r)^-n)
-  const cuota_capital_uf =
-    monto_credito_uf *
-    (tasa_mensual / (1 - Math.pow(1 + tasa_mensual, -n_meses)))
+  if (n_meses <= 0 || monto_credito_uf <= 0) {
+    const segFijos =
+      hipotecario_seg_desgravamen_uf + hipotecario_seg_sismos_uf
+    const minVida = 0.01
+    const dividendo_total_uf = segFijos + minVida
+    return {
+      monto_credito_uf,
+      monto_credito_clp,
+      dividendo_capital_uf: 0,
+      dividendo_total_uf,
+      dividendo_total_clp: Math.round(dividendo_total_uf * uf_valor_clp),
+      tabla_amortizacion: [],
+    }
+  }
+
+  // Cuota fija capital+interés: tasa > 0 → sistema francés; tasa = 0 → capital constante.
+  let cuota_capital_uf: number
+  if (tasa_mensual > 0) {
+    cuota_capital_uf =
+      monto_credito_uf *
+      (tasa_mensual / (1 - Math.pow(1 + tasa_mensual, -n_meses)))
+  } else {
+    cuota_capital_uf = monto_credito_uf / n_meses
+  }
 
   const tabla: FilaAmortizacion[] = []
   let saldo = monto_credito_uf
@@ -149,7 +195,7 @@ export function calcularHipotecario(
 // FV(rate, nper, 0, -pv, 1) * -1
 // ─────────────────────────────────────────────────────────────────
 export function calcularPlusvalia(
-  precio_compra_uf: number,
+  valor_escritura_uf: number,
   pie_total_uf: number,
   plusvalia_anual_pct: number,
   plusvalia_anos: number,
@@ -157,9 +203,9 @@ export function calcularPlusvalia(
 ): ResultadosPlusvaliaVenta {
   // FV con pagos al inicio del período (type=1)
   const precio_venta_5anos_uf =
-    precio_compra_uf * Math.pow(1 + plusvalia_anual_pct, plusvalia_anos)
+    valor_escritura_uf * Math.pow(1 + plusvalia_anual_pct, plusvalia_anos)
 
-  const ganancia_venta_uf = precio_venta_5anos_uf - precio_compra_uf + pie_total_uf
+  const ganancia_venta_uf = precio_venta_5anos_uf - valor_escritura_uf + pie_total_uf
   const ganancia_venta_clp = ganancia_venta_uf * uf_valor_clp
 
   // Utilidad sobre el pie invertido
@@ -182,7 +228,7 @@ export function calcularPlusvalia(
 export function calcularArriendo(
   rent: Cotizacion['rentabilidad'],
   dividendo_total_uf: number,
-  precio_compra_uf: number,
+  valor_escritura_uf: number,
   uf_valor_clp: number
 ): ResultadosArriendo {
   const {
@@ -210,7 +256,7 @@ export function calcularArriendo(
 
   // Cap rate = (ingreso neto anual) / precio compra
   const cap_rate_anual_pct =
-    precio_compra_uf > 0 ? (ingreso_uf * 12) / precio_compra_uf : 0
+    valor_escritura_uf > 0 ? (ingreso_uf * 12) / valor_escritura_uf : 0
 
   // Desglose renta corta (para mostrar en UI)
   const airbnb_admin_clp = tipo_renta === 'corta'

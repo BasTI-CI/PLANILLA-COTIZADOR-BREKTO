@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore'
 import { calcularDiversificacion } from '@/lib/engines/calculosDiversificacion'
+import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import TablaCashflow60m from './TablaCashflow60m'
 
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -25,7 +26,10 @@ export default function ModuloFlujo() {
   // IVA auto-computado
   const iva_auto = cotizaciones
     .filter(c => c.activa && c.califica_iva)
-    .reduce((sum, c) => sum + c.propiedad.precio_compra_uf * 0.15 * uf, 0)
+    .reduce((sum, c) => {
+      const r = calcularResultadosCotizacion(c, uf)
+      return sum + r.valor_escritura_uf * 0.15 * uf
+    }, 0)
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -58,7 +62,8 @@ export default function ModuloFlujo() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
               {cotizacionesActivas.map((c) => {
-                const iva_unidad = c.propiedad.precio_compra_uf * 0.15 * uf
+                const r = calcularResultadosCotizacion(c, uf)
+                const iva_unidad = r.valor_escritura_uf * 0.15 * uf
                 return (
                   <div key={c.id}
                     style={{

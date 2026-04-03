@@ -17,8 +17,9 @@ export function calcularIvaTotal(
   return cotizaciones
     .filter((c) => c.activa && c.califica_iva)
     .reduce((sum, c) => {
-      // IVA = 15% del IVA del precio de compra (el inmueble pagó IVA al constructor)
-      return sum + c.propiedad.precio_compra_uf * 0.15 * uf_valor_clp
+      const r = calcularResultadosCotizacion(c, uf_valor_clp)
+      // IVA modelado sobre valor de escrituración.
+      return sum + r.valor_escritura_uf * 0.15 * uf_valor_clp
     }, 0)
 }
 
@@ -31,7 +32,7 @@ export function calcularIvaTotal(
 // - Meses mes_entrega_primer_depto en adelante:
 //     Egreso = SUM(Dividendo - Arriendo) de cada cotización entregada
 //     (si Dividendo > Arriendo → egreso, si Arriendo > Dividendo → ingreso que reduce egreso)
-// - El IVA se inyecta 1 mes después de la escrituración (usamos mes_entrega + 1)
+// - El IVA se inyecta en mes_entrega_primer_depto + 5 (alineado con variables_calculo.md)
 //
 // Rentabilidad = Capital_inicio × tasa_mensual
 // Capital_fin = Capital_inicio + Ahorro - Egreso + IVA + Rentabilidad
@@ -59,7 +60,7 @@ export function calcularDiversificacion(
     : calcularIvaTotal(cotizaciones, uf_valor_clp)
 
   // Mes de inyección IVA = mes_entrega + 1 (llega el mes siguiente a la escrituración)
-  const mes_iva = mes_entrega_primer_depto + 1
+  const mes_iva = mes_entrega_primer_depto + 5
 
   // Cuota pie mensual de todas las cotizaciones activas (promedio del período pre-entrega)
   const cuota_pie_total = cotizacionesActivas.reduce((sum, c) => {
@@ -72,7 +73,7 @@ export function calcularDiversificacion(
   const diferencia_dividendo_arriendo = cotizacionesActivas.reduce((sum, c) => {
     const r = calcularResultadosCotizacion(c, uf_valor_clp)
     const dividendo_clp = r.hipotecario.dividendo_total_clp
-    const arriendo_clp = c.rentabilidad.arriendo_mensual_clp
+    const arriendo_clp = r.arriendo.ingreso_neto_flujo_clp
     // Si dividendo > arriendo → es un egreso (negativo para el flujo)
     return sum + (dividendo_clp - arriendo_clp)
   }, 0)
@@ -130,7 +131,7 @@ export function calcularProyeccionPatrimonio(
     activas.forEach((c) => {
       const nombre = `${c.propiedad.proyecto_nombre.split(' ')[0]} U${c.propiedad.unidad_numero}`
       punto[nombre] = Math.round(
-        c.propiedad.precio_compra_uf * Math.pow(1 + c.rentabilidad.plusvalia_anual_pct, i) * 100
+        c.propiedad.precio_neto_uf * Math.pow(1 + c.rentabilidad.plusvalia_anual_pct, i) * 100
       ) / 100
     })
     return punto

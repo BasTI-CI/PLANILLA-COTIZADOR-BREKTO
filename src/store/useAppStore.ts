@@ -40,9 +40,10 @@ const cotizacionVacia = (id: number): Cotizacion => ({
     unidad_entrega: '',
     precio_lista_uf: 0,
     descuento_uf: 0,
-    precio_compra_uf: 0,
+    precio_neto_uf: 0,
     bono_descuento_pct: 0,
     bono_max_pct: 0,
+    bono_aplica_adicionales: false,
     estacionamiento_uf: 0,
     bodega_uf: 0,
     reserva_clp: 100_000,
@@ -143,7 +144,10 @@ export const useAppStore = create<AppState & AppActions>()(
           state.diversificacion.diversif_iva_total_clp =
             state.cotizaciones
               .filter((c) => c.activa && c.califica_iva)
-              .reduce((sum, c) => sum + c.propiedad.precio_compra_uf * 0.15 * state.global.uf_valor_clp, 0)
+              .reduce((sum, c) => {
+                const r = calcularResultadosCotizacion(c, state.global.uf_valor_clp)
+                return sum + r.valor_escritura_uf * 0.15 * state.global.uf_valor_clp
+              }, 0)
         }
       }),
 

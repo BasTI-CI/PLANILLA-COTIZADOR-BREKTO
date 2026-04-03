@@ -50,7 +50,7 @@ export default function ModuloResumen() {
   const plusvaliaData = Array.from({ length: 6 }, (_, i) => {
     const obj: Record<string, number | string> = { ano: `Año ${i}` }
     activas.forEach((c, idx) => {
-      const precioBase = c.propiedad.precio_compra_uf
+      const precioBase = c.propiedad.precio_neto_uf
       const val = precioBase * Math.pow(1 + c.rentabilidad.plusvalia_anual_pct, i)
       obj[`${c.propiedad.proyecto_nombre.split(' ')[0]}`] = Math.round(val * 100) / 100
     })
@@ -82,8 +82,8 @@ export default function ModuloResumen() {
                 <th>Proyecto / Unidad</th>
                 <th>Tipología</th>
                 <th>m²</th>
-                <th>Precio Compra</th>
-                <th>Escrituración</th>
+                <th>Precio Neto</th>
+                <th>Valor escrituración (UF)</th>
                 <th>Pie</th>
                 <th>Dividendo</th>
                 <th>Plusvalía</th>
@@ -106,8 +106,8 @@ export default function ModuloResumen() {
                     <td>{c.propiedad.unidad_tipologia}</td>
                     <td>{c.propiedad.unidad_sup_total_m2} m²</td>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{fmtUF(c.propiedad.precio_compra_uf)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{fmtCLP(c.propiedad.precio_compra_uf * uf)}</div>
+                      <div style={{ fontWeight: 700 }}>{fmtUF(c.propiedad.precio_neto_uf)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{fmtCLP(c.propiedad.precio_neto_uf * uf)}</div>
                     </td>
                     <td>{fmtUF(r.escrituracion_uf)}</td>
                     <td>

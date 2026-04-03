@@ -179,9 +179,9 @@ export default function ModuloPDF() {
                   { l: 'Unidad', v: c.propiedad.unidad_numero },
                   { l: 'Tipología', v: c.propiedad.unidad_tipologia },
                   { l: 'Superficie total', v: `${c.propiedad.unidad_sup_total_m2} m²` },
-                  { l: 'Precio compra', v: fmtUF(c.propiedad.precio_compra_uf) },
-                  { l: 'Bono pie', v: fmtUF(r.bono_pie_uf) },
-                  { l: 'Monto escrituración', v: fmtUF(r.escrituracion_uf) },
+                  { l: 'Precio neto', v: fmtUF(c.propiedad.precio_neto_uf) },
+                  { l: 'Bono descuento (UF)', v: fmtUF(r.beneficio_inmobiliario_uf) },
+                  { l: 'Valor escrituración (UF)', v: fmtUF(r.escrituracion_uf) },
                   { l: 'Pie total', v: `${(c.pie.pie_pct * 100).toFixed(0)}% — ${fmtUF(r.pie_total_uf)}` },
                   { l: 'Dividendo mensual', v: fmtUF(r.hipotecario.dividendo_total_uf) },
                   { l: 'Entrega', v: c.propiedad.unidad_entrega },
@@ -206,8 +206,8 @@ export default function ModuloPDF() {
                 return (
                   <div key={c.id} style={{ padding: 14, background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 10 }}>
                     <div style={{ fontSize: 11, color: '#d4a843', marginBottom: 8, fontWeight: 700 }}>Cotización {letras[c.id]}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>{fmtUF(c.propiedad.precio_compra_uf)}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtCLP(c.propiedad.precio_compra_uf * uf)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>{fmtUF(c.propiedad.precio_neto_uf)}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtCLP(c.propiedad.precio_neto_uf * uf)}</div>
                     <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>Dividendo: <strong style={{ color: '#f1f5f9' }}>{fmtUF(r.hipotecario.dividendo_total_uf)}</strong></div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>Cap Rate: <strong style={{ color: '#10b981' }}>{(r.arriendo.cap_rate_anual_pct * 100).toFixed(2)}%</strong></div>
                   </div>

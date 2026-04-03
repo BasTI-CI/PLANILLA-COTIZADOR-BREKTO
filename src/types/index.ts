@@ -38,9 +38,10 @@ export interface DatosPropiedad {
   // Precios (desde Supabase o manual)
   precio_lista_uf: number
   descuento_uf: number
-  precio_compra_uf: number             // = precio_lista - descuento
-  bono_descuento_pct: number           // % bono aplicado
-  bono_max_pct: number
+  precio_neto_uf: number               // = precio_lista - descuento
+  bono_descuento_pct: number           // variables_calculo.md §1
+  bono_max_pct: number                 // variables_calculo.md §1
+  bono_aplica_adicionales: boolean    // variables_calculo.md §1
 
   // Adicionales
   estacionamiento_uf: number
@@ -64,7 +65,7 @@ export interface DatosHipotecario {
   hipotecario_tasa_anual: number         // decimal (ej: 0.034 = 3.4%)
   hipotecario_plazo_anos: number         // años (ej: 30)
   hipotecario_aprobacion_pct: number     // LTV decimal (ej: 0.9 = 90%)
-  hipotecario_abono_voluntario: number   // $CLP
+  hipotecario_abono_voluntario: number   // reservado — no usado en calcularHipotecario (variables_calculo.md §7)
   hipotecario_seg_desgravamen_uf: number // UF/mes fijo
   hipotecario_seg_sismos_uf: number      // UF/mes fijo
   hipotecario_tasa_seg_vida_pct: number  // % mensual sobre saldo
@@ -152,8 +153,10 @@ export interface ResultadosArriendo {
 
 export interface ResultadosCotizacion {
   cotizacion_id: number
-  escrituracion_uf: number               // precio_compra + bono_pie
-  bono_pie_uf: number
+  escrituracion_uf: number               // valor escrituración (base banco)
+  valor_tasacion_uf: number
+  valor_escritura_uf: number
+  beneficio_inmobiliario_uf: number    // variables_calculo.md §2 — tasación × bono_descuento_pct
   pie_total_uf: number
   pie_total_clp: number
   hipotecario: ResultadosHipotecario
@@ -170,7 +173,7 @@ export interface DatosDiversificacion {
   diversif_ahorro_mensual_clp: number
 
   // IVA — calculado automáticamente desde las cotizaciones con califica_iva=true
-  // 15% × precio_compra_uf × uf_valor_clp por cada cotización elegible
+  // 15% × valor_escritura_uf × uf_valor_clp por cada cotización elegible
   // Se puede sobrescribir manualmente si el usuario lo necesita
   diversif_iva_manual_override: boolean  // false = calculado auto, true = ingresado manual
   diversif_iva_total_clp: number         // monto de devolución IVA total
@@ -235,9 +238,10 @@ export interface UnidadSupabase {
   entrega: string
   precio_lista_uf: number
   descuento_uf: number
-  precio_compra_uf: number
+  precio_neto_uf: number
   bono_descuento_pct: number
   bono_max_pct: number
+  bono_aplica_adicionales: boolean
   pie_pct: number
   estacionamiento_uf: number
   bodega_uf: number

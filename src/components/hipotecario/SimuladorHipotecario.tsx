@@ -28,17 +28,17 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
   const r = res.hipotecario
   const p = cot.propiedad
 
-  // ── Lógica Bono Pie ──────────────────────────────────────────────
-  // El banco financia sobre el valor de escrituración (precio_compra + bono_pie)
-  // Para el inversionista: comparar precio de compra real vs monto que el banco deposita
-  const precio_compra_uf = p.precio_compra_uf
+  // ── Escrituración vs precio neto ─────────────────────────────────
+  // El banco financia sobre el valor de escrituración.
+  // Para el inversionista: comparar precio neto vs monto que el banco deposita.
+  const precio_neto_uf = p.precio_neto_uf
   const escrituracion_uf = res.escrituracion_uf
   const monto_financiado_uf = r.monto_credito_uf
-  const pie_real_uf = Math.max(precio_compra_uf - monto_financiado_uf, 0)
-  const tiene_bono = res.bono_pie_uf > 0
+  const pie_real_uf = Math.max(precio_neto_uf - monto_financiado_uf, 0)
+  const tiene_bono_descuento = res.beneficio_inmobiliario_uf > 0
 
-  // Porcentajes sobre el precio de compra real (para la barra visual)
-  const pct_financiado = precio_compra_uf > 0 ? (monto_financiado_uf / precio_compra_uf) * 100 : 0
+  // Porcentajes sobre el precio neto (para la barra visual)
+  const pct_financiado = precio_neto_uf > 0 ? (monto_financiado_uf / precio_neto_uf) * 100 : 0
   const pct_pie_real = Math.max(100 - pct_financiado, 0)
 
   return (
@@ -103,20 +103,20 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
 
         {/* ── Comparación Precio Compra / Escrituración / Crédito ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {/* 1. Precio de Compra — el valor real de la unidad */}
+          {/* 1. Precio Neto — valor comercial neto de la unidad */}
           <div className="stat-item">
-            <span className="stat-label">Precio de Compra</span>
-            <span className="stat-value">{formatUF(precio_compra_uf)}</span>
-            <span className="stat-sub">{formatCLP(precio_compra_uf * uf)}</span>
+            <span className="stat-label">Precio Neto</span>
+            <span className="stat-value">{formatUF(precio_neto_uf)}</span>
+            <span className="stat-sub">{formatCLP(precio_neto_uf * uf)}</span>
           </div>
 
-          {/* 2. Valor de Escrituración — el que ve el banco (precio + bono pie) */}
-          <div className="stat-item" style={tiene_bono ? { borderLeft: '2px solid var(--color-gold)', paddingLeft: 10 } : {}}>
+          {/* 2. Valor de Escrituración — base banco */}
+          <div className="stat-item" style={tiene_bono_descuento ? { borderLeft: '2px solid var(--color-gold)', paddingLeft: 10 } : {}}>
             <span className="stat-label">
-              Valor Escrituración
-              {tiene_bono && (
+              Valor escrituración (UF)
+              {tiene_bono_descuento && (
                 <span style={{ marginLeft: 5, fontSize: 9, background: 'rgba(212,168,67,0.18)', padding: '1px 5px', borderRadius: 3, color: 'var(--color-gold)' }}>
-                  + Bono Pie
+                  + Bono descuento
                 </span>
               )}
             </span>
@@ -175,13 +175,13 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
             }} />
             <div style={{ flex: 1, background: 'var(--color-accent)' }} />
           </div>
-          {tiene_bono && (
+          {tiene_bono_descuento && (
             <div style={{ marginTop: 6, fontSize: 10, color: 'var(--color-gold)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              ⚡ Bono Pie {formatUF(res.bono_pie_uf)} — el banco financia sobre escrituración ({formatUF(escrituracion_uf)}), equivale al {pct_financiado.toFixed(1)}% del precio real
+              ⚡ Bono descuento {formatUF(res.beneficio_inmobiliario_uf)} UF — el banco financia sobre escrituración ({formatUF(escrituracion_uf)}), equivale al {pct_financiado.toFixed(1)}% del precio neto
             </div>
           )}
           <div style={{ marginTop: 3, fontSize: 10, color: 'var(--color-text-muted)' }}>
-            Porcentajes calculados sobre Precio de Compra ({formatUF(precio_compra_uf)})
+            Porcentajes calculados sobre Precio Neto ({formatUF(precio_neto_uf)})
           </div>
         </div>
       </div>
