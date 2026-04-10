@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { MOCK_UNIDADES_IMAGINA } from './imaginaPruebaRepository'
 import { validateUnidadSupabaseForMotor } from './validateStockInputs'
 import { unidadSupabaseToDatosPropiedad } from './mapToDatosPropiedad'
 import type { ProyectoSupabase, UnidadSupabase } from '@/types'
@@ -63,5 +64,14 @@ describe('unidadSupabaseToDatosPropiedad', () => {
     expect(d.proyecto_nombre).toBe('Test')
     expect(d.precio_neto_uf).toBe(90)
     expect(d.reserva_clp).toBe(100_000)
+  })
+})
+
+describe('MOCK_UNIDADES_IMAGINA', () => {
+  it('cada unidad demo cumple invariantes del motor', () => {
+    for (const u of MOCK_UNIDADES_IMAGINA) {
+      const r = validateUnidadSupabaseForMotor(u)
+      expect(r.ok, r.issues.map((i) => i.message).join('; ')).toBe(true)
+    }
   })
 })

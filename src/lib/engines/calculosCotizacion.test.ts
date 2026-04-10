@@ -130,6 +130,19 @@ describe('calcularResultadosCotizacion', () => {
     const v = validarResultadosCotizacion(cot, r)
     expect(v.ok, v.fallos.map((f) => `${f.id}: ${f.mensaje}`).join(' | ')).toBe(true)
   })
+
+  it('cadena referencia: lista 3988 → neto 3589,2; bonif 10% compra 3230,28; BI 15% tasación 3800,33', () => {
+    const cot = cotEjemploPlanilla()
+    cot.propiedad.precio_lista_uf = 3988
+    cot.propiedad.descuento_uf = 398.8
+    cot.propiedad.precio_neto_uf = 3589.2
+    cot.propiedad.bono_max_pct = 0.1
+    cot.propiedad.bono_descuento_pct = 0.15
+    const r = calcularResultadosCotizacion(cot, uf)
+    expect(r.precio_compra_total_uf).toBeCloseTo(3230.28, 2)
+    expect(r.valor_tasacion_uf).toBeCloseTo(3800.33, 2)
+    expect(r.valor_escritura_uf).toBeCloseTo(3800.33, 2)
+  })
 })
 
 describe('calcularPlusvalia', () => {

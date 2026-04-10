@@ -42,19 +42,27 @@ export function useProyectos() {
 export function useUnidades(proyectoId: string | null) {
   const [unidades, setUnidades] = useState<Awaited<ReturnType<typeof stockRepo.listUnidadesByProyecto>>>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!proyectoId) {
       setUnidades([])
+      setError(null)
       return
     }
     const idProyecto = proyectoId
     let cancelled = false
     async function fetchUnidades() {
       setLoading(true)
+      setError(null)
       try {
         const list = await stockRepo.listUnidadesByProyecto(idProyecto)
         if (!cancelled) setUnidades(list)
+      } catch (err) {
+        if (!cancelled) {
+          setUnidades([])
+          setError(err instanceof Error ? err.message : 'Error cargando unidades')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -63,7 +71,7 @@ export function useUnidades(proyectoId: string | null) {
     return () => { cancelled = true }
   }, [proyectoId])
 
-  return { unidades, loading }
+  return { unidades, loading, error }
 }
 
 

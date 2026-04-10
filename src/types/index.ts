@@ -38,7 +38,7 @@ export interface DatosPropiedad {
   // Precios (desde Supabase o manual) — ver variables_calculo.md §1.0.0
   precio_lista_uf: number               // catálogo depto antes de descuentos comerciales
   descuento_uf: number
-  precio_neto_uf: number               // precio de compra del depto = lista − descuento (post-dctos, pre-BI)
+  precio_neto_uf: number               // neto tras dcto. sobre lista; el «precio de compra depto» mostrado es ×(1−bono_max_pct) si aplica
   bono_descuento_pct: number           // variables_calculo.md §1
   bono_max_pct: number                 // §1; en UI: Descuento por Bonificación (%)
   bono_aplica_adicionales: boolean    // variables_calculo.md §1
@@ -152,7 +152,7 @@ export interface ResultadosArriendo {
 
 export interface ResultadosCotizacion {
   cotizacion_id: number
-  /** Lista menos descuentos: depto + est + bod (UF), pre-BI. @see precioCompraTotalUf */
+  /** precioCompraDeptoUf + est + bod (UF), pre-BI. @see precioCompra.ts */
   precio_compra_total_uf: number
   valor_tasacion_uf: number
   /** Base banco / pie % / crédito / plusvalía base (variables_calculo.md §1.0.0) */

@@ -83,7 +83,7 @@ export function validarResultadosCotizacion(
   if (Math.abs(res.precio_compra_total_uf - compraEsp) > epsUf) {
     fallos.push({
       id: 'precio_compra_total',
-      mensaje: `precio_compra_total_uf ≠ neto depto + est + bod (Δ ${Math.abs(res.precio_compra_total_uf - compraEsp).toFixed(4)} UF)`,
+      mensaje: `precio_compra_total_uf ≠ precio compra depto + est + bod (Δ ${Math.abs(res.precio_compra_total_uf - compraEsp).toFixed(4)} UF)`,
     })
   }
 

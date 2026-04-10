@@ -88,7 +88,7 @@ Son **cuatro magnitudes distintas**. Mezclarlas en etiquetas o en celdas (Cotiza
 | Magnitud | Qué representa (negocio) | Variable en código | Cómo se obtiene |
 |----------|--------------------------|--------------------|-----------------|
 | **1. Precio lista** | Valor de catálogo / lista del **departamento** antes de los descuentos comerciales que el asesor aplica en la negociación. Es el punto de partida del “descuento UF”. | `precio_lista_uf` | Entrada: stock/API o manual. |
-| **2. Precio de compra** | Monto **neto comercial** que el cliente pagaría por **cada rubro** (depto, estacionamiento, bodega) **después** de aplicar **todos** los descuentos sobre lista que correspondan a ese rubro. **No** incluye el beneficio inmobiliario (BI / “bono pie” hacia tasación) ni pasos posteriores del motor. **Ejemplo planilla de referencia:** con solo depto, “Precio depto con dctos” = 2.881,33 UF; con Est.=0 y Bod.=0, “Precio de compra [UF]” = 2.881,33 UF. | En código: neto **depto** `precio_neto_uf` (invariante `precio_lista_uf − descuento_uf`); adicionales `estacionamiento_uf`, `bodega_uf` deben cargarse **ya netos** post-descuentos propios. **Precio de compra total (referencia):** `precio_neto_uf + estacionamiento_uf + bodega_uf`. | Si varios % en cadena en Excel ya están **incorporados** en `precio_neto_uf`, configurar `bono_max_pct` / `bono_descuento_pct` para **no duplicar** (§1 “Mapeo cotizador secuencial”). |
+| **2. Precio de compra** | Monto **neto comercial** por rubro **después** de **todos** los descuentos comerciales (lista, y el % «Descuento por Bonificación» si aplica en cadena). **No** incluye BI hacia tasación. | **Depto en pantalla / total:** `precio_neto_uf × (1 − bono_max_pct) + est. + bod.` donde `precio_neto_uf` cumple `lista − descuento` (paso previo al % bonificación en el motor). Adicionales ya netos por ítem. Ver `precioCompraDeptoUf` / `precioCompraTotalUf`. | Si el neto **ya incluye** el paso de bonificación, `bono_max_pct = 0` (§1 “Mapeo secuencial”). |
 | **3. Valor tasación** (depto) | Valor del depto **tal como lo usa el esquema de financiamiento / tasación**: **solo después** de cerrado el precio de compra del depto se aplica la lógica de §3.1 (**beneficio inmobiliario** `bono_descuento_pct` y **Descuento por Bonificación** `bono_max_pct`). En el ejemplo de referencia, “Precio con Bono Pie” del depto = 2.881,33 ÷ (1 − 0,15) = **3.389,80 UF**. | `valor_tasacion_uf` | **Solo depto:** `valorTasacionDeptoUf(precio_neto_uf, bono_descuento_pct, bono_max_pct)`. No incluye estacionamiento ni bodega. |
 | **4. Valor (precio) de escrituración** | **Base total de la operación en escritura:** valor tasación del depto **más** estacionamiento y bodega expresados en UF, según reglas de §3.1 (si `bono_aplica_adicionales`, los adicionales pueden repercutir el beneficio inmobiliario). Sobre este valor se calculan **pie %**, **crédito**, **plusvalía base**, **IVA** en flujo, etc. | `valor_escritura_uf` | `valor_tasacion_uf + adicionales_en_escritura_uf` (ver §3.1). |
 
@@ -123,7 +123,7 @@ Sobre el **depto**, la transición **precio de compra → valor tasación** no e
 | Resultado | Relación |
 |-----------|----------|
 | `beneficio_inmobiliario_uf` | Monto asociado al **beneficio inmobiliario %** sobre la **tasación del depto:** `valor_tasacion_uf × bono_descuento_pct`. No es el “precio de compra”; es parte del esquema que separa neto comercial de valor tasación. |
-| `precio_compra_total_uf` (derivado, §1.0.1) | Si se muestra **una** fila “compra total” con depto + adicionales a precio de compra: típicamente `precio_neto_uf + estacionamiento_uf + bodega_uf` **solo si** estac./bodega están al mismo criterio de “precio pagado” que el depto. El motor sigue usando `valor_escritura_uf` para pie y crédito. |
+| `precio_compra_total_uf` (derivado, §1.0.1) | **Depto** a precio de compra = `precio_neto_uf × (1 − bono_max_pct)` (Desc. por Bonificación); total = eso + `estacionamiento_uf` + `bodega_uf` (pre-BI). `precio_neto_uf` es neto **solo** tras descuentos sobre lista, antes de ese %. El motor sigue usando `valor_escritura_uf` para pie y crédito. |
 
 ##### Impacto por pestaña (lectura obligatoria para UI)
 
@@ -138,7 +138,7 @@ Sobre el **depto**, la transición **precio de compra → valor tasación** no e
 
 | Nombre comercial (fijo) | Significado de negocio | Variable(es) en código | Notas / fórmula |
 |-------------------------|------------------------|-------------------------|-----------------|
-| **PRECIO DE COMPRA** | **Lista menos todos los descuentos comerciales** aplicables a depto, estacionamiento y bodega (según operación). Es la **base comercial final antes del BI**; **no** incluye beneficio inmobiliario ni “precio con bono pie”. | **Depto:** `propiedad.precio_neto_uf`. **Adicionales:** `propiedad.estacionamiento_uf`, `propiedad.bodega_uf` (cada uno al precio de compra de ese ítem). **Total referencia:** `precio_neto_uf + estacionamiento_uf + bodega_uf`. | **No** es `valor_tasacion_uf` ni `valor_escritura_uf`. El **BI** se aplica **después**, sobre esa lógica (ver §1.0.0 “Orden obligatorio” y §3.1). |
+| **PRECIO DE COMPRA** | **Lista menos descuentos comerciales** (incl. cadena con % bonificación vía motor). Base **antes del BI**; **no** incluye “precio con bono pie” hacia tasación. | **Depto:** `precioCompraDeptoUf(propiedad)` (= `precio_neto_uf × (1 − bono_max_pct)`). **Total:** `precioCompraTotalUf`. | **No** es `valor_tasacion_uf` ni `valor_escritura_uf`. El **BI** (`bono_descuento_pct`) va en §3.1 **después** del precio de compra depto. |
 | **Precio neto (etiqueta histórica en UI)** | En pantalla y tablas antiguas suele mostrarse el neto del **depto** únicamente. | `propiedad.precio_neto_uf` | Sustitución de etiqueta hacia **PRECIO DE COMPRA** según fila mostrada (solo depto vs total con adicionales) — ver `CONTEXTO_RETOMAR_RESUMEN_INVERSION.md`. |
 | **Pie a documentar** | Porcentaje y monto del pie sobre **valor de escrituración**. | `pie.pie_pct`; resultado: `pie_total_uf` = `valor_escritura_uf × pie_pct` | `calcularResultadosCotizacion` |
 | **Bono pie** | Parte del pie que la inmobiliaria **bonifica** (no la cuota de caja del cliente por ese tramo). En el formulario es el **resto** del `pie_pct` respecto de upfront + cuotas antes/después + cuotón (todos como % sobre **valor escrituración** en la planilla de referencia). | En UF: conceptualmente `bono_pie_uf = valor_escritura_uf × pct_bonificacion_pie`, con `pct_bonificacion_pie = pie_pct − upfront_pct − cuotas_antes_entrega_pct − cuotas_despues_entrega_pct − cuoton_pct` (coherente con `CotizacionForm.tsx`). | Hasta que exista campo dedicado en `DatosDesglosePie`, el valor se **deriva** de los % anteriores. No confundir con `beneficio_inmobiliario_uf` (beneficio sobre **tasación** del depto, `bono_descuento_pct`). |
@@ -167,7 +167,7 @@ Sobre el **depto**, la transición **precio de compra → valor tasación** no e
 
 **Valores derivados para la comparativa (no son campos guardados hasta nueva versión de tipos):**
 
-- `precio_compra_total_uf` = `precio_neto_uf + estacionamiento_uf + bodega_uf` (definición de referencia; validar negocio).
+- `precio_compra_total_uf` = `precio_neto_uf × (1 − bono_max_pct) + estacionamiento_uf + bodega_uf` (definición de referencia; `precioCompraTotalUf`).
 - `bono_pie_uf` = `valor_escritura_uf × (pie_pct − upfront_pct − cuotas_antes_entrega_pct − cuotas_despues_entrega_pct − cuoton_pct)` con los % del desglose alineados a la planilla.
 - `pie_a_pagar_uf` = `pie_total_uf − bono_pie_uf`.
 
@@ -236,7 +236,7 @@ Todo sale de `calcularResultadosCotizacion`. Campos raíz:
 
 | Campo | Significado |
 |-------|-------------|
-| `precio_compra_total_uf` | Entrada comercial agregada: `precio_neto_uf + estacionamiento_uf + bodega_uf` (post-descuentos, pre-BI). Ver `precioCompraTotalUf`. |
+| `precio_compra_total_uf` | Entrada comercial: `precioCompraTotalUf` = depto (`precio_neto × (1 − b_max)`) + adicionales a precio compra. Ver `precioCompra.ts`. |
 | `valor_tasacion_uf` | Depto: fórmula §3.1 sobre `precio_neto_uf` (beneficio inmob. y `bono_max_pct`). |
 | `valor_escritura_uf` | Base banco: `valor_tasacion_uf` + adicionales (§3.1). |
 | `beneficio_inmobiliario_uf` | `valor_tasacion_uf * bono_descuento_pct` |

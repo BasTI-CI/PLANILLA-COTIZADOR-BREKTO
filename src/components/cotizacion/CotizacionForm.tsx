@@ -3,8 +3,9 @@ import { useAppStore } from '@/store/useAppStore'
 import { useProyectos, useUnidades } from '@/hooks/useSupabase'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { precioCompraTotalUf } from '@/lib/engines/precioCompra'
+import { precioCompraDeptoUf, precioCompraTotalUf } from '@/lib/engines/precioCompra'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
 import type { DatosPropiedad } from '@/types'
 
@@ -56,7 +57,12 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const [modoManual, setModoManual] = useState(cot?.modo_fuente === 'manual')
   const { proyectos, loading: loadingProys } = useProyectos()
   const [proyectoSelId, setProyectoSelId] = useState<string>('')
-  const { unidades, loading: loadingUnidades } = useUnidades(proyectoSelId)
+  const [unidadSelId, setUnidadSelId] = useState<string>('')
+  const { unidades, loading: loadingUnidades, error: errorUnidades } = useUnidades(proyectoSelId)
+
+  useEffect(() => {
+    setUnidadSelId('')
+  }, [proyectoSelId])
 
   // Recalcular al cambiar parámetros
   useEffect(() => {
@@ -92,7 +98,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   const precioListaUf = p.precio_lista_uf
   const descuentoUfActual = p.descuento_uf
-  const precioNetoDisplay = modoManual ? p.precio_neto_uf : precioListaUf - descuentoUfActual
+  /** Precio de compra del depto (tras lista/dcto. y % Bonificación); no confundir con `precio_neto_uf` (solo post-lista). */
+  const precioCompraDeptoDisplay = precioCompraDeptoUf(p)
   const descuentoPctLista =
     precioListaUf > 0 ? (descuentoUfActual / precioListaUf) * 100 : 0
 
@@ -153,37 +160,76 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
         {/* ── Modo Supabase: seleccionar proyecto/unidad ── */}
         {!modoManual && (
-          <div className="card-grid-2">
-            <div className="form-group">
-              <label className="form-label">Proyecto</label>
-              {loadingProys ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                  <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
-                </div>
-              ) : (
-                <select className="form-select" value={proyectoSelId}
-                  onChange={(e) => setProyectoSelId(e.target.value)}>
-                  <option value="">— Seleccionar proyecto —</option>
-                  {proyectos.map((pr) => (
-                    <option key={pr.id} value={pr.id}>{pr.nombre} · {pr.comuna}</option>
+          <>
+            {!isSupabaseConfigured() && (
+              <p
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  color: '#f59e0b',
+                  margin: '0 0 12px',
+                  padding: '10px 12px',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  borderRadius: 8,
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                }}
+              >
+                <strong>Modo demostración:</strong> no hay variables <code style={{ fontSize: 11 }}>VITE_SUPABASE_*</code> en{' '}
+                <code style={{ fontSize: 11 }}>.env.local</code>. El desplegable de unidades usa{' '}
+                <strong>stock de prueba Imagina</strong> embebido en la app (misma forma que la tabla{' '}
+                <code style={{ fontSize: 11 }}>Stock_Imagina_Prueba</code>). Con Supabase configurado se listan las filas reales del proyecto.
+              </p>
+            )}
+            <div className="card-grid-2">
+              <div className="form-group">
+                <label className="form-label">Proyecto</label>
+                {loadingProys ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                    <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                  </div>
+                ) : (
+                  <select className="form-select" value={proyectoSelId}
+                    onChange={(e) => setProyectoSelId(e.target.value)}>
+                    <option value="">— Seleccionar proyecto —</option>
+                    {proyectos.map((pr) => (
+                      <option key={pr.id} value={pr.id}>{pr.nombre} · {pr.comuna}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Unidad / Departamento</label>
+                <select
+                  className="form-select"
+                  key={proyectoSelId}
+                  value={unidadSelId}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setUnidadSelId(v)
+                    if (v) handleCargarUnidad(v)
+                  }}
+                  disabled={!proyectoSelId || loadingUnidades}
+                >
+                  <option value="">— Seleccionar unidad —</option>
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.numero} · {u.tipologia} · {u.sup_total_m2}m² · {formatUF(u.precio_lista_uf)}
+                    </option>
                   ))}
                 </select>
-              )}
+                {errorUnidades && (
+                  <p style={{ fontSize: 11, color: 'var(--color-error)', marginTop: 6, marginBottom: 0 }}>
+                    No se pudieron cargar unidades: {errorUnidades}
+                  </p>
+                )}
+                {isSupabaseConfigured() && proyectoSelId && !loadingUnidades && !errorUnidades && unidades.length === 0 && (
+                  <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6, marginBottom: 0 }}>
+                    La consulta no devolvió filas. Comprueba que exista la tabla <code style={{ fontSize: 10 }}>Stock_Imagina_Prueba</code> y políticas RLS para lectura.
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Unidad / Departamento</label>
-              <select className="form-select"
-                onChange={(e) => handleCargarUnidad(e.target.value)}
-                disabled={!proyectoSelId || loadingUnidades}>
-                <option value="">— Seleccionar unidad —</option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.numero} · {u.tipologia} · {u.sup_total_m2}m² · {formatUF(u.precio_lista_uf)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -322,18 +368,24 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label" title="Neto comercial del depto tras todos los descuentos que reflejes aquí o en lista/dcto; antes del BI hacia tasación">
+            <label className="form-label" title="Equivale a precio_neto × (1 − Desc. por Bonificación %). Si editas el monto, se recalcula precio_neto y descuento sobre lista.">
               Precio de compra depto (UF)
             </label>
             <FormattedNumberInput
               className="form-input"
-              value={precioNetoDisplay}
+              value={precioCompraDeptoDisplay}
               readOnly={!modoManual}
               decimals={2}
               onChange={(val) => {
                 const lista = p.precio_lista_uf
-                const duf = Math.round((lista - val) * 100) / 100
-                setPropiedad(cotizacionId, { precio_neto_uf: val, descuento_uf: Math.max(0, duf) })
+                const denom = 1 - p.bono_max_pct
+                const neto =
+                  denom > 1e-12 ? Math.round((val / denom) * 100) / 100 : val
+                const duf = Math.round((lista - neto) * 100) / 100
+                setPropiedad(cotizacionId, {
+                  precio_neto_uf: neto,
+                  descuento_uf: Math.max(0, duf),
+                })
               }}
             />
           </div>
