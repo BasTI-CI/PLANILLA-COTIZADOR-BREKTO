@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Cotizacion } from '@/types'
 import { DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_RENTABILIDAD } from '@/types'
 import { calcularResultadosCotizacion } from './calculosCotizacion'
@@ -62,12 +62,17 @@ describe('validarResultadosCotizacion', () => {
   })
 
   it('falla si pie + LTV ≠ 100%', () => {
-    const cot = cotBase()
-    cot.hipotecario.hipotecario_aprobacion_pct = 0.75
-    const r = calcularResultadosCotizacion(cot, 37_000)
-    const v = validarResultadosCotizacion(cot, r)
-    expect(v.ok).toBe(false)
-    expect(v.fallos.some((f) => f.id === 'pie_mas_ltv')).toBe(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const cot = cotBase()
+      cot.hipotecario.hipotecario_aprobacion_pct = 0.75
+      const r = calcularResultadosCotizacion(cot, 37_000)
+      const v = validarResultadosCotizacion(cot, r)
+      expect(v.ok).toBe(false)
+      expect(v.fallos.some((f) => f.id === 'pie_mas_ltv')).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('falla si lista − descuento ≠ neto', () => {

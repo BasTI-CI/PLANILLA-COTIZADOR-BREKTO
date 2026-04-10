@@ -1,12 +1,25 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+/**
+ * Cliente Supabase solo si existen `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+ * Sin ellas la app arranca igual (cotización manual); los hooks usan datos mock.
+ * La BD enlazada es provisional (validación); ver variables_calculo.md — prioridad motor vs capa datos.
+ */
+let client: SupabaseClient | null = null
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local'
-  )
+export function isSupabaseConfigured(): boolean {
+  const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim()
+  const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim()
+  return Boolean(url && key)
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export function getSupabase(): SupabaseClient | null {
+  if (!isSupabaseConfigured()) return null
+  if (!client) {
+    client = createClient(
+      import.meta.env.VITE_SUPABASE_URL as string,
+      import.meta.env.VITE_SUPABASE_ANON_KEY as string
+    )
+  }
+  return client
+}

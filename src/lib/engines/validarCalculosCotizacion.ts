@@ -1,7 +1,8 @@
 import type { Cotizacion, DatosPropiedad, ResultadosCotizacion } from '@/types'
 import { valorTasacionDeptoUf } from './calculosCotizacion'
+import { precioCompraTotalUf } from './precioCompra'
 
-/** Tolerancia por defecto: coherente con `debugValorPropiedad100`. */
+/** Tolerancia por defecto para comparaciones UF en validación cruzada. */
 const EPS_UF_DEFAULT = 0.02
 const EPS_PCT_DEFAULT = 0.0005
 /** Amortización con redondeos mensuales puede desviar la suma de capital (UF). */
@@ -78,10 +79,11 @@ export function validarResultadosCotizacion(
     })
   }
 
-  if (Math.abs(res.escrituracion_uf - res.valor_escritura_uf) > epsUf) {
+  const compraEsp = precioCompraTotalUf(propiedad)
+  if (Math.abs(res.precio_compra_total_uf - compraEsp) > epsUf) {
     fallos.push({
-      id: 'alias_escrituracion',
-      mensaje: 'escrituracion_uf debe igualar valor_escritura_uf',
+      id: 'precio_compra_total',
+      mensaje: `precio_compra_total_uf ≠ neto depto + est + bod (Δ ${Math.abs(res.precio_compra_total_uf - compraEsp).toFixed(4)} UF)`,
     })
   }
 

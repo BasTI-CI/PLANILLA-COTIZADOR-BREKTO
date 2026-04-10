@@ -3,7 +3,9 @@ import { useAppStore } from '@/store/useAppStore'
 import { useProyectos, useUnidades } from '@/hooks/useSupabase'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
+import { precioCompraTotalUf } from '@/lib/engines/precioCompra'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
+import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
 import type { DatosPropiedad } from '@/types'
 
 interface Props { cotizacionId: number }
@@ -71,28 +73,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     const proyecto = proyectos.find(pr => pr.id === proyectoSelId)
     if (!unidad || !proyecto) return
 
-    const prop: DatosPropiedad = {
-      proyecto_nombre: proyecto.nombre,
-      proyecto_comuna: proyecto.comuna,
-      proyecto_barrio: proyecto.barrio ?? '',
-      proyecto_direccion: proyecto.direccion ?? '',
-      unidad_numero: unidad.numero,
-      unidad_tipologia: unidad.tipologia,
-      unidad_sup_interior_m2: unidad.sup_interior_m2,
-      unidad_sup_terraza_m2: unidad.sup_terraza_m2,
-      unidad_sup_total_m2: unidad.sup_total_m2,
-      unidad_orientacion: unidad.orientacion,
-      unidad_entrega: unidad.entrega,
-      precio_lista_uf: unidad.precio_lista_uf,
-      descuento_uf: unidad.descuento_uf,
-      precio_neto_uf: unidad.precio_neto_uf,
-      bono_descuento_pct: unidad.bono_descuento_pct,
-      bono_max_pct: unidad.bono_max_pct,
-      bono_aplica_adicionales: unidad.bono_aplica_adicionales,
-      estacionamiento_uf: unidad.estacionamiento_uf,
-      bodega_uf: unidad.bodega_uf,
-      reserva_clp: 100_000,
+    const valid = validateUnidadSupabaseForMotor(unidad)
+    if (!valid.ok && import.meta.env.DEV) {
+      console.warn(
+        '[stock] Invariantes de unidad con avisos:',
+        valid.issues.map((i) => i.message).join(' | ')
+      )
     }
+
+    const prop = unidadSupabaseToDatosPropiedad(proyecto, unidad)
     cargarDesdeSupabase(cotizacionId, prop)
   }
 
@@ -254,8 +243,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               lineHeight: 1.5,
             }}
           >
-            Equivalencia cotizador en cadena: 1.er % ≈ dcto. s/lista; 3.er desc. secuencial ≈ «Descuento adicional %»; bonificación ≈ «Beneficio inmobiliario %».
-            Si el <strong>precio neto</strong> ya trae el 3.er descuento aplicado, deja descuento adicional en <strong>0</strong> y usa solo beneficio para escrituración (evita doble conteo).
+            Orden lógico: lista → descuentos comerciales (incl. «Descuento por Bonificación %» si aplica en el motor) → <strong>precio de compra depto</strong> → beneficio inmobiliario (BI) hacia tasación.
+            El 3.er descuento secuencial de la planilla ≈ «Descuento por Bonificación»; el BI va <strong>siempre después</strong> del precio de compra. Si el neto ya incluye ese descuento, deja ese % en <strong>0</strong> (evita doble conteo).
           </p>
 
           <div className="form-group">
@@ -316,22 +305,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Precio neto (UF)</label>
-            <FormattedNumberInput
-              className="form-input"
-              value={precioNetoDisplay}
-              readOnly={!modoManual}
-              decimals={2}
-              onChange={(val) => {
-                const lista = p.precio_lista_uf
-                const duf = Math.round((lista - val) * 100) / 100
-                setPropiedad(cotizacionId, { precio_neto_uf: val, descuento_uf: Math.max(0, duf) })
-              }}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label" title="≈ 3.er descuento secuencial; si ya está en precio neto, usar 0">
-              Descuento adicional (%)
+            <label className="form-label" title="≈ 3.er descuento secuencial (sobre precio ya rebajado); si el precio de compra depto ya lo incluye, usar 0">
+              Descuento por Bonificación (%)
             </label>
             <div className="form-input-group">
               <FormattedNumberInput
@@ -345,6 +320,22 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               />
               <span className="suffix">%</span>
             </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label" title="Neto comercial del depto tras todos los descuentos que reflejes aquí o en lista/dcto; antes del BI hacia tasación">
+              Precio de compra depto (UF)
+            </label>
+            <FormattedNumberInput
+              className="form-input"
+              value={precioNetoDisplay}
+              readOnly={!modoManual}
+              decimals={2}
+              onChange={(val) => {
+                const lista = p.precio_lista_uf
+                const duf = Math.round((lista - val) * 100) / 100
+                setPropiedad(cotizacionId, { precio_neto_uf: val, descuento_uf: Math.max(0, duf) })
+              }}
+            />
           </div>
           <div className="form-group">
             <label className="form-label" title="≈ Bonificación % hacia valor tasación / escrituración">
@@ -383,6 +374,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               onChange={(val) => setPropiedad(cotizacionId, { bodega_uf: val })}
             />
           </div>
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Precio de compra total (UF)</label>
+            <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600, opacity: 0.95 }}>
+              {formatUF(precioCompraTotalUf(p))}
+              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                {formatCLP(precioCompraTotalUf(p) * uf)} · depto + est. + bod. (post-descuentos, pre-BI)
+              </div>
+            </div>
+          </div>
           <div className="form-group">
             <label className="form-label">Aplicar beneficio inmob. % sobre adicionales</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -395,7 +395,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   background: p.bono_aplica_adicionales ? 'var(--color-success)' : 'var(--color-error)',
                   position: 'relative', transition: 'background 0.25s',
                 }}
-                title={p.bono_aplica_adicionales ? 'Sí: descuento adicional (%) también reduce estacionamiento y bodega en escritura' : 'No: adicionales al valor pleno en escritura'}
+                title={p.bono_aplica_adicionales ? 'Sí: Descuento por Bonificación (%) también reduce estacionamiento y bodega en escritura' : 'No: adicionales al valor pleno en escritura'}
               >
                 <span
                   style={{
@@ -910,16 +910,21 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           <div className="card-header">
             <h3 className="card-title">📋 Resultado</h3>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
             <div className="stat-item">
-              <span className="stat-label">Precio Neto</span>
-              <span className="stat-value gold">{formatUF(p.precio_neto_uf)}</span>
-              <span className="stat-sub">{formatCLP(p.precio_neto_uf * uf)}</span>
+              <span className="stat-label">Precio de compra total (UF)</span>
+              <span className="stat-value gold">{formatUF(res.precio_compra_total_uf)}</span>
+              <span className="stat-sub">{formatCLP(res.precio_compra_total_uf * uf)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Valor tasación depto (UF)</span>
+              <span className="stat-value">{formatUF(res.valor_tasacion_uf)}</span>
+              <span className="stat-sub">{formatCLP(res.valor_tasacion_uf * uf)}</span>
             </div>
             <div className="stat-item">
               <span className="stat-label">Valor escrituración (UF)</span>
-              <span className="stat-value">{formatUF(res.escrituracion_uf)}</span>
-              <span className="stat-sub">{formatCLP(res.escrituracion_uf * uf)}</span>
+              <span className="stat-value">{formatUF(res.valor_escritura_uf)}</span>
+              <span className="stat-sub">{formatCLP(res.valor_escritura_uf * uf)}</span>
             </div>
             <div className="stat-item">
               <span className="stat-label">Pie Total</span>

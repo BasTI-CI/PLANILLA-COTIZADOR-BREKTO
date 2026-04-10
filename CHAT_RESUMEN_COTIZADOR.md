@@ -8,7 +8,15 @@ Archivo generado para consultar en otro computador. La fuente normativa de cálc
 
 - Priorizar **documento a documento** (`variables_calculo.md`) frente a tocar todo el programa, salvo que se pida lo contrario.
 - **Etiquetas del frontend** (asesor) ≠ **nombres de variables en código/API**; el contrato es el documento + `src/types/index.ts`.
-- Objetivo futuro: **librería pura** + API (v2); web compone `Cotizacion` desde Supabase + campos manuales.
+- Objetivo futuro: **librería pura** + API (v2); web compone `Cotizacion` desde backend + campos manuales. La capa Supabase **actual** es solo de prueba (ver abajo).
+
+---
+
+## Base de datos y Supabase (alcance)
+
+- La **BD conectada hoy** vía Supabase **no es la definitiva**: sirve **únicamente** para validar cálculos y carga con **una inmobiliaria y un proyecto**. El producto final contempla órdenes de magnitud mayores (~**30** inmobiliarias, ~**260** proyectos, **>10.000** unidades), con esquema y tablas que **aún no existen**.
+- **Prioridad de documentación y código:** el contrato de negocio vive en `variables_calculo.md`, `src/types/index.ts` y `src/lib/engines/*`. El **mapeo** fila BD → `DatosPropiedad` en `useSupabase.ts` es **provisional** y se **reemplazará** cuando exista el remapeo definitivo a las nuevas tablas/columnas.
+- Detalle normativo: sección **«Prioridad: motor de cálculo vs capa de datos (Supabase)»** en `variables_calculo.md`.
 
 ---
 
@@ -18,7 +26,7 @@ Archivo generado para consultar en otro computador. La fuente normativa de cálc
 | Pantalla (asesor)                   | Variable en código              |
 | ----------------------------------- | ------------------------------- |
 | Bono descuento (%)                  | `bono_descuento_pct`            |
-| Descuento adicional (%)             | `bono_max_pct`                  |
+| Descuento por Bonificación (%)      | `bono_max_pct`                  |
 | Bono adicionales                    | `bono_aplica_adicionales`       |
 | Valor tasación (UF)                 | `valor_tasacion_uf` (resultado) |
 | Valor escrituración (UF)            | `valor_escritura_uf`            |
@@ -62,12 +70,12 @@ Listado numerado de errores y números de ejemplo: `**variables_calculo.md` §9*
 
 | Archivo                                        | Rol                                         |
 | ---------------------------------------------- | ------------------------------------------- |
-| `variables_calculo.md`                         | Fórmulas, variables, mapeo UI, §9 Excel     |
+| `variables_calculo.md`                         | Fórmulas, variables, alcance BD vs motor, §9 Excel |
 | `src/lib/engines/calculosCotizacion.ts`        | Motor cotización                            |
 | `src/lib/engines/calculosPie.ts`               | Desglose pie CLP (**revisar** vs Excel)     |
-| `src/lib/engines/validarCalculosCotizacion.ts` | Validación cruzada                          |
-| `src/lib/engines/debugValorPropiedad100.ts`    | Depurador UI                                |
-| `src/hooks/useSupabase.ts`                     | Mapeo tabla `Stock_Imagina_Prueba` → unidad |
+| `src/lib/engines/validarCalculosCotizacion.ts` | Validación cruzada motor vs fórmulas (tests + uso futuro API) |
+| `src/lib/stock/*`                              | **Stock dinámico:** `StockRepository`, repo Imagina, `unidadSupabaseToDatosPropiedad`, validación previa al motor |
+| `src/hooks/useSupabase.ts`                     | Hooks que consumen `createDefaultStockRepository()` + UF Mindicador |
 
 
 ---

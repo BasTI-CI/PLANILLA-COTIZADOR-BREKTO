@@ -1,121 +1,66 @@
+/**
+ * Hooks de datos: stock vía `StockRepository` y UF vía API pública.
+ * Mapeo BD → motor: `src/lib/stock` (reglas de cálculo: `src/lib/engines`).
+ */
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import type { ProyectoSupabase, UnidadSupabase } from '@/types'
+import { createDefaultStockRepository } from '@/lib/stock'
+import { PROYECTO_IMAGINA } from '@/lib/stock/imaginaPruebaRepository'
 
-// ─── Tipo real de la tabla Stock_Imagina_Prueba ─────────────────────
-interface StockRow {
-  id: number
-  depto: number
-  modelo: string
-  orientacion: string
-  precio: number
-  sup_int: number
-  sup_terr: number
-  sup_total: number
-  dcto: number
-  precio_dcto: number
-  bono5: number
-  precio_bono5: number
-  bono10: number
-  precio_bono10: number
-}
+const stockRepo = createDefaultStockRepository()
 
-const TABLA = 'Stock_Imagina_Prueba'
-
-// Proyecto sintético (la tabla no tiene proyectos separados)
-const PROYECTO_IMAGINA: ProyectoSupabase = {
-  id: 'imagina',
-  nombre: 'Imagina',
-  comuna: 'Santiago',
-  barrio: '',
-  direccion: '',
-  inmobiliaria: 'Imagina Inmobiliaria',
-}
-
-function rowToUnidad(row: StockRow): UnidadSupabase {
-  return {
-    id: String(row.id),
-    proyecto_id: 'imagina',
-    numero: String(row.depto),
-    tipologia: row.modelo,
-    sup_interior_m2: row.sup_int,
-    sup_terraza_m2: row.sup_terr,
-    sup_total_m2: row.sup_total,
-    orientacion: row.orientacion,
-    entrega: 'A convenir',
-    precio_lista_uf: row.precio,
-    descuento_uf: Math.round((row.precio - row.precio_dcto) * 100) / 100,
-    precio_neto_uf: row.precio_dcto,
-    bono_descuento_pct: row.dcto,
-    bono_max_pct: row.bono10,          // bono10 = bono máximo
-    bono_aplica_adicionales: false,
-    pie_pct: 0.20,                     // default 20% (ajustar cuando se tenga dato real)
-    estacionamiento_uf: 0,
-    bodega_uf: 0,
-    disponible: true,
-  }
-}
-
-// ─── Fallback mock (si Supabase no responde) ──────────────────────
-const MOCK_PROYECTOS: ProyectoSupabase[] = [PROYECTO_IMAGINA]
-
-// ─── Hook: Proyectos — retorna el proyecto Imagina ─────────────────
+// ─── Hook: Proyectos ───────────────────────────────────────────────
 export function useProyectos() {
-  const [proyectos, setProyectos] = useState<ProyectoSupabase[]>([])
+  const [proyectos, setProyectos] = useState<Awaited<ReturnType<typeof stockRepo.listProyectos>>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     async function fetchProyectos() {
+      setLoading(true)
+      setError(null)
       try {
-        // Verificamos que la tabla exista consultando 1 fila
-        const { error: err } = await supabase
-          .from(TABLA)
-          .select('id')
-          .limit(1)
-
-        if (err) throw err
-        // Si la tabla existe, exponemos el proyecto Imagina
-        setProyectos([PROYECTO_IMAGINA])
+        const list = await stockRepo.listProyectos()
+        if (!cancelled) setProyectos(list)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando proyectos')
-        setProyectos(MOCK_PROYECTOS)   // silently fallback
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Error cargando proyectos')
+          setProyectos([PROYECTO_IMAGINA])
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
-    fetchProyectos()
+    void fetchProyectos()
+    return () => { cancelled = true }
   }, [])
 
   return { proyectos, loading, error }
 }
 
 // ─── Hook: Unidades por proyecto ───────────────────────────────────
-// proyectoId = 'imagina' → trae todos los registros de Stock_Imagina_Prueba
 export function useUnidades(proyectoId: string | null) {
-  const [unidades, setUnidades] = useState<UnidadSupabase[]>([])
+  const [unidades, setUnidades] = useState<Awaited<ReturnType<typeof stockRepo.listUnidadesByProyecto>>>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!proyectoId) { setUnidades([]); return }
-
+    if (!proyectoId) {
+      setUnidades([])
+      return
+    }
+    const idProyecto = proyectoId
+    let cancelled = false
     async function fetchUnidades() {
       setLoading(true)
       try {
-        const { data, error } = await supabase
-          .from(TABLA)
-          .select('*')
-          .order('depto', { ascending: true })
-
-        if (error) throw error
-        setUnidades((data as StockRow[]).map(rowToUnidad))
-      } catch {
-        setUnidades([])
+        const list = await stockRepo.listUnidadesByProyecto(idProyecto)
+        if (!cancelled) setUnidades(list)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
-    fetchUnidades()
+    void fetchUnidades()
+    return () => { cancelled = true }
   }, [proyectoId])
 
   return { unidades, loading }
@@ -146,7 +91,6 @@ export function useUF() {
         if (valor && valor > 0) {
           setUF(valor)
           if (fechaISO) {
-            // Converter ISO → "15/03/2026"
             setFecha(new Date(fechaISO).toLocaleDateString('es-CL', {
               day: '2-digit', month: '2-digit', year: 'numeric',
             }))

@@ -6,20 +6,20 @@ import type {
   ResultadosPlusvaliaVenta,
   ResultadosArriendo,
 } from '@/types'
+import { precioCompraTotalUf } from './precioCompra'
 
 // ─────────────────────────────────────────────────────────────────
 // MOTOR DE CÁLCULO — fórmulas exactas de la planilla Excel
 // ─────────────────────────────────────────────────────────────────
 
-const EPS_PCT_POS = 1e-12
-
 /**
- * Tasación depto (UF), una sola fórmula:
- * `precio_neto × (1 − desc. adicional) ÷ (1 − beneficio inmob.)`
- * - Solo desc. adic. (beneficio 0%): tasación = neto × (1 − b_max). Ej. 3389,80 × 0,9 = 3050,82.
- * - Solo beneficio (b_max 0%): tasación = neto ÷ (1 − beneficio).
- * - Ambos: ej. neto × 0,85 ÷ 0,9 ≈ 3201,48.
- * Si `(1 − beneficio) ≤ 0`, se devuelve `precio_neto` (evita división inválida).
+ * Tasación depto (UF), una sola fórmula (variables_calculo.md §3.1):
+ * `precio_neto × (1 − bono_max_pct) ÷ (1 − bono_descuento_pct)`
+ * UI: beneficio inmobiliario vs Descuento por Bonificación — en código `b_desc` / `b_max`.
+ * - Solo bonificación comercial vía `bono_max_pct` (beneficio inmob. 0 %): tasación = neto × (1 − b_max).
+ * - Solo beneficio inmobiliario (`bono_max_pct` 0 %): tasación = neto ÷ (1 − b_desc).
+ * - Ambos activos: producto del numerador y divisor anteriores.
+ * Si `(1 − b_desc) ≤ 0`, se devuelve `precio_neto` (evita división inválida).
  */
 export function valorTasacionDeptoUf(
   precio_neto_uf: number,
@@ -62,7 +62,7 @@ export function calcularResultadosCotizacion(
   const adicionales_en_escritura_uf = adicionalesEscrituraUf(propiedad)
 
   const valor_escritura_uf = valor_tasacion_uf + adicionales_en_escritura_uf
-  const escrituracion_uf = valor_escritura_uf
+  const precio_compra_total_uf = precioCompraTotalUf(propiedad)
 
   // Monto UF = valor_tasacion_uf * bono_descuento_pct (resultado `beneficio_inmobiliario_uf`).
   const beneficio_inmobiliario_uf = valor_tasacion_uf * bono_descuento_pct
@@ -103,7 +103,7 @@ export function calcularResultadosCotizacion(
 
   return {
     cotizacion_id: cot.id,
-    escrituracion_uf,
+    precio_compra_total_uf,
     valor_tasacion_uf,
     valor_escritura_uf,
     beneficio_inmobiliario_uf,
@@ -276,7 +276,7 @@ export function calcularArriendo(
   // Resultado mensual = ingreso neto - dividendo
   const resultado_mensual_clp = ingreso_neto_clp - dividendo_clp
 
-  // Cap rate = (ingreso neto anual) / precio compra
+  // Cap rate anual = ingreso neto UF × 12 / valor escrituración (base patrimonio en escritura)
   const cap_rate_anual_pct =
     valor_escritura_uf > 0 ? (ingreso_uf * 12) / valor_escritura_uf : 0
 

@@ -35,15 +35,15 @@ export interface DatosPropiedad {
   unidad_orientacion: string
   unidad_entrega: string               // "Inmediata" o fecha
 
-  // Precios (desde Supabase o manual)
-  precio_lista_uf: number
+  // Precios (desde Supabase o manual) — ver variables_calculo.md §1.0.0
+  precio_lista_uf: number               // catálogo depto antes de descuentos comerciales
   descuento_uf: number
-  precio_neto_uf: number               // = precio_lista - descuento
+  precio_neto_uf: number               // precio de compra del depto = lista − descuento (post-dctos, pre-BI)
   bono_descuento_pct: number           // variables_calculo.md §1
-  bono_max_pct: number                 // variables_calculo.md §1
+  bono_max_pct: number                 // §1; en UI: Descuento por Bonificación (%)
   bono_aplica_adicionales: boolean    // variables_calculo.md §1
 
-  // Adicionales
+  // Adicionales (UF a precio de compra de cada ítem; ver §1.0.0)
   estacionamiento_uf: number
   bodega_uf: number
   reserva_clp: number
@@ -65,7 +65,6 @@ export interface DatosHipotecario {
   hipotecario_tasa_anual: number         // decimal (ej: 0.034 = 3.4%)
   hipotecario_plazo_anos: number         // años (ej: 30)
   hipotecario_aprobacion_pct: number     // LTV decimal (ej: 0.9 = 90%)
-  hipotecario_abono_voluntario: number   // reservado — no usado en calcularHipotecario (variables_calculo.md §7)
   hipotecario_seg_desgravamen_uf: number // UF/mes fijo
   hipotecario_seg_sismos_uf: number      // UF/mes fijo
   hipotecario_tasa_seg_vida_pct: number  // % mensual sobre saldo
@@ -153,8 +152,10 @@ export interface ResultadosArriendo {
 
 export interface ResultadosCotizacion {
   cotizacion_id: number
-  escrituracion_uf: number               // valor escrituración (base banco)
+  /** Lista menos descuentos: depto + est + bod (UF), pre-BI. @see precioCompraTotalUf */
+  precio_compra_total_uf: number
   valor_tasacion_uf: number
+  /** Base banco / pie % / crédito / plusvalía base (variables_calculo.md §1.0.0) */
   valor_escritura_uf: number
   beneficio_inmobiliario_uf: number    // variables_calculo.md §2 — tasación × bono_descuento_pct
   pie_total_uf: number
@@ -214,7 +215,10 @@ export interface AppState {
 }
 
 // ------------------------------------------------------------------
-// 6. ENTIDADES DE SUPABASE (tabla de stock)
+// 6. ENTIDADES PARA CARGA DESDE API / SUPABASE
+// Objetos normalizados hacia DatosPropiedad. El mapeo desde filas de BD es
+// PROVISIONAL (ver variables_calculo.md — capa datos vs motor); sustituir cuando
+// exista el esquema definitivo multi-inmobiliaria / multi-proyecto.
 // ------------------------------------------------------------------
 export interface ProyectoSupabase {
   id: string
@@ -255,7 +259,6 @@ export const DEFAULT_HIPOTECARIO: DatosHipotecario = {
   hipotecario_tasa_anual: 0.034,         // 3.4%
   hipotecario_plazo_anos: 30,
   hipotecario_aprobacion_pct: 0.9,       // 90%
-  hipotecario_abono_voluntario: 0,
   hipotecario_seg_desgravamen_uf: 0.0157,
   hipotecario_seg_sismos_uf: 0.0082,
   hipotecario_tasa_seg_vida_pct: 0.000285,
