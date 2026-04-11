@@ -77,6 +77,34 @@ Documento complementario de negocio para la pestaña Resumen: [`CONTEXTO_RETOMAR
 
 ---
 
+## Publicar en Netlify (Safari y móvil)
+
+La app es estática tras `pnpm build`; [`netlify.toml`](./netlify.toml) define `publish = "dist"`, redirect SPA y Node 20. **Vite inyecta variables en el build:** debes configurarlas en Netlify, no solo en `.env.local`.
+
+### Opción recomendada: GitHub + despliegue continuo
+
+1. Entra en [Netlify](https://app.netlify.com) → **Add new site** → **Import an existing project** → conecta el repositorio `PLANILLA-COTIZADOR-BREKTO`.
+2. Deja **Build command** `pnpm run build` y **Publish directory** `dist` (o confía en `netlify.toml`).
+3. En **Site configuration → Environment variables**, añade al menos:
+   - `VITE_SUPABASE_URL` — URL del proyecto Supabase.
+   - `VITE_SUPABASE_ANON_KEY` — clave anónima (pública) de Supabase.
+   - Opcional: `VITE_STOCK_BACKEND` = `imagina` o `definitivo` si usas esa capa.
+4. **Deploy site**. Cada `git push` a la rama enlazada volverá a desplegar. Abre la URL que te asigne Netlify (`*.netlify.app`) en Safari o en el celular.
+
+Sin esas variables, el build puede fallar o la app no podrá hablar con Supabase; sin Supabase igual puedes probar con valores de placeholder y usar **unidades demo** según la lógica del proyecto.
+
+### Opción CLI (desde tu Mac)
+
+```bash
+pnpm install
+netlify login
+netlify init    # enlaza la carpeta a un sitio (o elige uno existente)
+# Configura las mismas variables: netlify env:set VITE_SUPABASE_URL "https://..."
+pnpm run deploy:netlify   # build + netlify deploy --prod
+```
+
+---
+
 ## Créditos
 
 **Creador y compilador de esta herramienta:** Bastián N. Rodríguez López.

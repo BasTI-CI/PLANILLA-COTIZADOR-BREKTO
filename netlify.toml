@@ -1,11 +1,18 @@
+# Build: Netlify detecta pnpm-lock.yaml e instala dependencias antes de `command`.
+# Variables obligatorias en el panel (Site → Environment variables), prefijo VITE_:
+#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+# Opcional: VITE_STOCK_BACKEND=imagina | definitivo
+
 [build]
-  command = "pnpm build"
+  command = "pnpm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
+  # Activa Corepack para usar el pnpm declarado en package.json ("packageManager")
+  COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
 
-# SPA (Vite + React)
+# SPA (Vite + React): rutas directas sirven index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
