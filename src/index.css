@@ -78,6 +78,17 @@ h1,h2,h3,h4,h5 {
 a { color: var(--color-accent-light); text-decoration: none; }
 input, select, textarea { font-family: var(--font-body); }
 
+/* Quitar flechas (spinner) en cualquier input numérico nativo — Safari, Chrome, Firefox */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ── Scrollbar personalizado ───────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-bg); }
@@ -426,6 +437,11 @@ input, select, textarea { font-family: var(--font-body); }
   font-size: 13px;
   outline: none;
 }
+/* Simulador hipotecario / flujo: texto manual sin controles nativos extra (Safari) */
+.form-input-group input.hip-sim-input {
+  -webkit-appearance: none;
+  appearance: none;
+}
 .form-input-group .suffix {
   padding: 8px 12px;
   font-size: 12px;
@@ -707,13 +723,34 @@ tr.total-row td {
 }
 /* Inputs numéricos sin flechas (spinner), p. ej. mes de entrega / tasa */
 input.form-input.input-no-spinner::-webkit-outer-spin-button,
-input.form-input.input-no-spinner::-webkit-inner-spin-button {
+input.form-input.input-no-spinner::-webkit-inner-spin-button,
+.form-input-group input.input-no-spinner::-webkit-outer-spin-button,
+.form-input-group input.input-no-spinner::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input.form-input.input-no-spinner[type='number'] {
+input.form-input.input-no-spinner[type='number'],
+.form-input-group input.input-no-spinner[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+.btn-link-hip {
+  background: none;
+  border: none;
+  color: var(--color-gold);
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+.btn-link-hip:hover {
+  color: var(--color-gold-bright, #e8c76a);
+}
+.form-input-group input.input-readonly-muted {
+  cursor: not-allowed;
+  opacity: 0.9;
 }
 
 .fade-in { animation: fadeIn 0.3s ease forwards; }

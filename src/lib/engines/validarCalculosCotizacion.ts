@@ -111,6 +111,14 @@ export function validarResultadosCotizacion(
     })
   }
 
+  /** Pie documentado (s/ escritura) no puede ser menor que bono pie = beneficio inmobiliario (`bono_descuento_pct`). */
+  if (pie.pie_pct + epsPct < propiedad.bono_descuento_pct) {
+    fallos.push({
+      id: 'pie_menor_bono_pie',
+      mensaje: `Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%) no puede ser menor que bono pie / beneficio inmobiliario (${(propiedad.bono_descuento_pct * 100).toFixed(2)}%).`,
+    })
+  }
+
   const credEsp = res.valor_escritura_uf * hipotecario.hipotecario_aprobacion_pct
   if (Math.abs(res.hipotecario.monto_credito_uf - credEsp) > epsUf) {
     fallos.push({

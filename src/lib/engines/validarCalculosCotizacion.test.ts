@@ -84,4 +84,15 @@ describe('validarResultadosCotizacion', () => {
     expect(v.ok).toBe(false)
     expect(v.fallos.some((f) => f.id === 'lista_menos_descuento_neto')).toBe(true)
   })
+
+  it('falla si pie a documentar < bono pie (beneficio inmobiliario)', () => {
+    const cot = cotBase()
+    cot.propiedad.bono_descuento_pct = 0.15
+    cot.pie.pie_pct = 0.1
+    cot.hipotecario.hipotecario_aprobacion_pct = 0.9
+    const r = calcularResultadosCotizacion(cot, 37_000)
+    const v = validarResultadosCotizacion(cot, r)
+    expect(v.ok).toBe(false)
+    expect(v.fallos.some((f) => f.id === 'pie_menor_bono_pie')).toBe(true)
+  })
 })

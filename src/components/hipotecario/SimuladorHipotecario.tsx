@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
+
+const MSG_SEGUROS_OFICIALES =
+  'Estos datos son datos obtenidos de fuentes oficiales. ¿Tienes seguridad de querer modificarlos?'
 
 interface Props { cotizacionId: number }
 
@@ -12,6 +15,29 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
   const cot = cotizaciones[cotizacionId]
   const uf = global.uf_valor_clp
   const [showTabla, setShowTabla] = useState(false)
+
+  /** Entrada manual (texto) para tasa % y plazo entero — sin spinners del navegador */
+  const [tasaPctStr, setTasaPctStr] = useState(() => {
+    const c = cotizaciones[cotizacionId]
+    if (!c?.activa) return ''
+    return (c.hipotecario.hipotecario_tasa_anual * 100).toFixed(2)
+  })
+  const [plazoAnosStr, setPlazoAnosStr] = useState(() => {
+    const c = cotizaciones[cotizacionId]
+    if (!c?.activa) return ''
+    return String(Math.round(c.hipotecario.hipotecario_plazo_anos))
+  })
+  /** Seguros UF: solo editables tras confirmar (fuentes oficiales) */
+  const [segurosDesbloqueados, setSegurosDesbloqueados] = useState(false)
+
+  useEffect(() => {
+    const c = cotizaciones[cotizacionId]
+    if (!c?.activa) return
+    const h = c.hipotecario
+    setTasaPctStr((h.hipotecario_tasa_anual * 100).toFixed(2))
+    setPlazoAnosStr(String(Math.round(h.hipotecario_plazo_anos)))
+    setSegurosDesbloqueados(false)
+  }, [cotizacionId, cot?.activa])
 
   if (!cot?.activa) {
     return (
@@ -41,6 +67,29 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
   const pct_pie_doc =
     valor_escritura_uf > 0 ? (pie_doc_uf / valor_escritura_uf) * 100 : 0
 
+  const commitTasaPct = () => {
+    const raw = tasaPctStr.replace(',', '.').trim()
+    let pct = parseFloat(raw)
+    if (Number.isNaN(pct)) {
+      pct = hip.hipotecario_tasa_anual * 100
+    }
+    pct = Math.min(100, Math.max(0, pct))
+    pct = Math.round(pct * 100) / 100
+    setHipotecario(cotizacionId, { hipotecario_tasa_anual: pct / 100 })
+    setTasaPctStr(pct.toFixed(2))
+  }
+
+  const commitPlazoAnos = () => {
+    const raw = plazoAnosStr.replace(/\D/g, '')
+    let n = parseInt(raw, 10)
+    if (Number.isNaN(n)) {
+      n = hip.hipotecario_plazo_anos
+    }
+    n = Math.min(40, Math.max(1, n))
+    setHipotecario(cotizacionId, { hipotecario_plazo_anos: n })
+    setPlazoAnosStr(String(n))
+  }
+
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
@@ -59,40 +108,139 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
           <div className="form-group">
             <label className="form-label">Tasa Anual (%)</label>
             <div className="form-input-group">
-              <input type="number" min={1} max={20} step={0.01}
-                value={(hip.hipotecario_tasa_anual * 100).toFixed(2)}
-                onChange={(e) => setHipotecario(cotizacionId, { hipotecario_tasa_anual: (parseFloat(e.target.value) || 0) / 100 })} />
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                aria-label="Tasa anual en porcentaje, hasta dos decimales"
+                className="hip-sim-input"
+                value={tasaPctStr}
+                onChange={(e) => setTasaPctStr(e.target.value)}
+                onBlur={commitTasaPct}
+              />
               <span className="suffix">%</span>
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Plazo</label>
+            <label className="form-label">Plazo (años)</label>
             <div className="form-input-group">
-              <input type="number" min={5} max={30} step={5}
-                value={hip.hipotecario_plazo_anos}
-                onChange={(e) => setHipotecario(cotizacionId, { hipotecario_plazo_anos: parseInt(e.target.value) || 30 })} />
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                aria-label="Plazo en años, número entero"
+                className="hip-sim-input"
+                value={plazoAnosStr}
+                onChange={(e) => setPlazoAnosStr(e.target.value.replace(/\D/g, ''))}
+                onBlur={commitPlazoAnos}
+              />
               <span className="suffix">años</span>
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Seg. Desgravamen (UF)</label>
             <div className="form-input-group">
-              <input type="number" min={0} max={1} step={0.001}
-                value={hip.hipotecario_seg_desgravamen_uf}
-                onChange={(e) => setHipotecario(cotizacionId, { hipotecario_seg_desgravamen_uf: parseFloat(e.target.value) || 0 })} />
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                readOnly={!segurosDesbloqueados}
+                className={
+                  !segurosDesbloqueados
+                    ? 'input-readonly-muted hip-sim-input'
+                    : 'hip-sim-input'
+                }
+                value={
+                  segurosDesbloqueados
+                    ? String(hip.hipotecario_seg_desgravamen_uf)
+                    : hip.hipotecario_seg_desgravamen_uf.toLocaleString('es-CL', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 4,
+                      })
+                }
+                onChange={
+                  segurosDesbloqueados
+                    ? (e) => {
+                        const v = e.target.value.replace(',', '.')
+                        const n = parseFloat(v)
+                        if (!Number.isNaN(n)) {
+                          setHipotecario(cotizacionId, { hipotecario_seg_desgravamen_uf: n })
+                        } else if (v === '' || v === '-') {
+                          setHipotecario(cotizacionId, { hipotecario_seg_desgravamen_uf: 0 })
+                        }
+                      }
+                    : undefined
+                }
+              />
               <span className="suffix">UF</span>
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Seg. Sismos (UF)</label>
             <div className="form-input-group">
-              <input type="number" min={0} max={1} step={0.001}
-                value={hip.hipotecario_seg_sismos_uf}
-                onChange={(e) => setHipotecario(cotizacionId, { hipotecario_seg_sismos_uf: parseFloat(e.target.value) || 0 })} />
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                readOnly={!segurosDesbloqueados}
+                className={
+                  !segurosDesbloqueados
+                    ? 'input-readonly-muted hip-sim-input'
+                    : 'hip-sim-input'
+                }
+                value={
+                  segurosDesbloqueados
+                    ? String(hip.hipotecario_seg_sismos_uf)
+                    : hip.hipotecario_seg_sismos_uf.toLocaleString('es-CL', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 4,
+                      })
+                }
+                onChange={
+                  segurosDesbloqueados
+                    ? (e) => {
+                        const v = e.target.value.replace(',', '.')
+                        const n = parseFloat(v)
+                        if (!Number.isNaN(n)) {
+                          setHipotecario(cotizacionId, { hipotecario_seg_sismos_uf: n })
+                        } else if (v === '' || v === '-') {
+                          setHipotecario(cotizacionId, { hipotecario_seg_sismos_uf: 0 })
+                        }
+                      }
+                    : undefined
+                }
+              />
               <span className="suffix">UF</span>
             </div>
           </div>
         </div>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
+          Los montos de seguro desgravamen y sismos provienen de fuentes oficiales.
+          {!segurosDesbloqueados && (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="btn-link-hip"
+                onClick={() => {
+                  if (window.confirm(MSG_SEGUROS_OFICIALES)) setSegurosDesbloqueados(true)
+                }}
+              >
+                Habilitar edición
+              </button>
+            </>
+          )}
+        </p>
       </div>
 
       {/* ── Resultado del Crédito ── */}
@@ -131,6 +279,11 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
             <span className="stat-sub">{formatCLP(r.monto_credito_clp)}</span>
           </div>
         </div>
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, lineHeight: 1.45 }}>
+          El crédito y el pie total se calculan sobre el <strong>mismo valor de escrituración</strong>: monto financiado = escrituración × % LTV;
+          pie documentado = escrituración × % pie. El resto de pie (bonificación de cuota) va dentro del % pie; no confundir con el % de
+          beneficio inmobiliario (tasación) de la cotización.
+        </p>
 
         {/* ── Dividendo Mensual destacado ── */}
         <div style={{

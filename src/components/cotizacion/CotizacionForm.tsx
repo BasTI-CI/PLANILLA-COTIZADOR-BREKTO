@@ -111,24 +111,31 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     monto_cuoton_clp: montoCuotonClp,
   } = calcularMontosDesglosePieClp(valorEscrituraUf, pie, uf)
 
-  /** Misma tolerancia que `validarCalculosCotizacion` (pie + LTV = 100%). */
+  /**
+   * Reglas (mismo criterio que `validarResultadosCotizacion`): crédito + pie doc = 100% s/ escritura;
+   * **pie a documentar ≥ bono pie** donde bono pie = beneficio inmobiliario (`bono_descuento_pct`, un solo %).
+   */
   const EPS_PCT_REVISION = 0.0005
-  const pctFinanciamiento = hip.hipotecario_aprobacion_pct
+  const pctCreditoLt = hip.hipotecario_aprobacion_pct
+  const pctPieDoc = pie.pie_pct
   const pctAbonoInicial = pie.upfront_pct
   const pctAntesEntrega = pie.cuotas_antes_entrega_pct
   const pctDespuesEntrega = pie.cuotas_despues_entrega_pct
   const pctCuoton = pie.cuoton_pct
-  /** Resto del pie documentado respecto de abono + tramos (etiqueta planilla: bonificación). */
-  const pctBonificacionPie =
-    pie.pie_pct - pctAbonoInicial - pctAntesEntrega - pctDespuesEntrega - pctCuoton
-  const sumaPctRevisionHipotecario =
-    pctFinanciamiento +
-    pctBonificacionPie +
-    pctAntesEntrega +
-    pctDespuesEntrega +
-    pctAbonoInicial +
-    pctCuoton
-  const revisionPorcentajesOk = Math.abs(sumaPctRevisionHipotecario - 1) <= EPS_PCT_REVISION
+  /** Tramos de pie a cargo del cliente (s/ escritura): upfront + cuotas + cuotón. */
+  const pctPieClienteTramos =
+    pctAbonoInicial + pctAntesEntrega + pctDespuesEntrega + pctCuoton
+  /** Resto = pie doc − tramos (parte bonificada dentro del pie documentado). */
+  const pctRestoPieNoTramos = pctPieDoc - pctPieClienteTramos
+  const sumaCreditoMasPie = pctCreditoLt + pctPieDoc
+  const revisionCreditoPieOk = Math.abs(sumaCreditoMasPie - 1) <= EPS_PCT_REVISION
+  /** Tramos no pueden superar el pie documentado (si no, resto negativo). */
+  const desglosePieCoherente = pctRestoPieNoTramos >= -EPS_PCT_REVISION
+  const pctBonoPieBeneficio = p.bono_descuento_pct
+  /** No documentar menos pie que el bono pie (BI) acordado. */
+  const pieDocMayorOIgualBonoPie = pctPieDoc + EPS_PCT_REVISION >= pctBonoPieBeneficio
+  const revisionPorcentajesOk =
+    revisionCreditoPieOk && desglosePieCoherente && pieDocMayorOIgualBonoPie
 
   return (
     <div className="fade-in cotizacion-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -389,8 +396,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label" title="≈ Bonificación % hacia valor tasación / escrituración">
-              Beneficio inmobiliario (%)
+            <label className="form-label" title="Bono pie = beneficio inmobiliario (un solo %). El pie a documentar debe ser ≥ este %.">
+              Bono pie / Beneficio inmobiliario (%)
             </label>
             <div className="form-input-group">
               <FormattedNumberInput
@@ -502,9 +509,10 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               lineHeight: 1.5,
             }}
           >
-            Pie documentado = valor escrituración × %. Los % de upfront, tramos en cuotas y cuotón son sobre{' '}
-            <span style={{ color: 'var(--color-text)' }}>valor escrituración</span>; abajo, «Resumen financiero» muestra pesos.
-            Cuotas totales pie alimenta la pestaña Flujo (diversificación), no este desglose.
+            Pie documentado = valor escrituración × %. Debe ser <strong>≥ bono pie / beneficio inmobiliario</strong> (mismo % de la sección
+            superior): no puedes documentar menos pie que el bono pie frente al banco. Se descompone en <strong>tramos</strong> (upfront, cuotas,
+            cuotón) + <strong>resto</strong>. Junto con % crédito = 100% s/ escritura. Tramos sobre{' '}
+            <span style={{ color: 'var(--color-text)' }}>valor escrituración</span>; «Resumen financiero» muestra $. Cuotas totales pie → Flujo.
           </p>
           <div className="form-group">
             <label className="form-label">PIE a documentar (%)</label>
@@ -787,32 +795,117 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 margin: '0 0 14px',
                 fontSize: 12,
                 color: 'var(--color-text-muted)',
-                lineHeight: 1.5,
+                lineHeight: 1.55,
               }}
             >
-              Sumando: % financiamiento + % bonificación + % antes + % después + % abono inicial + % cuotón
+              <strong style={{ color: 'var(--color-text-secondary)' }}>Sobre el valor de escrituración (100%):</strong> % crédito + % pie
+              documentado = 100%. El <strong>bono pie</strong> (mismo % que <strong>beneficio inmobiliario</strong> arriba) debe quedar{' '}
+              <strong>contenido en</strong> el % pie a documentar: <strong>pie documentado ≥ bono pie</strong>. Luego ese pie se parte en
+              tramos de cliente + resto; el resto no sustituye al bono pie — el total documentado ya lo incluye.
             </p>
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                gap: 12,
+                display: 'grid',
+                gap: 6,
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: 14,
-                fontWeight: 700,
-                color: revisionPorcentajesOk ? 'var(--color-success)' : '#f87171',
+                fontSize: 13,
+                fontWeight: 600,
                 marginBottom: 10,
               }}
             >
-              <span>Suma de porcentajes:</span>
-              <span>
-                {(sumaPctRevisionHipotecario * 100).toLocaleString('es-CL', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-                %
-              </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
+                <span>% crédito (LTV) s/ escrit.</span>
+                <span>{(pctCreditoLt * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
+                <span>% pie documentado s/ escrit.</span>
+                <span>{(pctPieDoc * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  paddingLeft: 4,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: 'var(--color-text-muted)',
+                  fontStyle: 'italic',
+                  opacity: 0.92,
+                }}
+              >
+                <span>Bono pie = beneficio inmobiliario (mín. que debe caber en % pie doc.)</span>
+                <span>
+                  {(pctBonoPieBeneficio * 100).toLocaleString('es-CL', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                  %
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  paddingLeft: 10,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: 'var(--color-text-muted)',
+                  opacity: 0.95,
+                }}
+              >
+                <span> ↳ % resto pie s/ escrit. (pie doc. − tramos)</span>
+                <span>
+                  {(Math.max(0, pctRestoPieNoTramos) * 100).toLocaleString('es-CL', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                  %
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  paddingLeft: 10,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: 'var(--color-text-muted)',
+                  opacity: 0.95,
+                }}
+              >
+                <span> ↳ % pie cliente (upfront + tramos + cuotón)</span>
+                <span>
+                  {(pctPieClienteTramos * 100).toLocaleString('es-CL', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                  %
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  paddingTop: 6,
+                  borderTop: '1px solid rgba(255,255,255,0.08)',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: revisionCreditoPieOk ? 'var(--color-success)' : '#f87171',
+                }}
+              >
+                <span>Suma crédito + pie doc.</span>
+                <span>
+                  {(sumaCreditoMasPie * 100).toLocaleString('es-CL', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                  %
+                </span>
+              </div>
             </div>
             <div
               style={{
@@ -822,9 +915,27 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 lineHeight: 1.45,
               }}
             >
-              {revisionPorcentajesOk
-                ? '✓ Perfecto: los porcentajes suman exactamente 100%.'
-                : `Ajusta los porcentajes: la suma es ${(sumaPctRevisionHipotecario * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% (objetivo 100%).`}
+              {!revisionCreditoPieOk && (
+                <span>
+                  Ajusta % crédito o % pie documentado: la suma debe ser 100% (ahora{' '}
+                  {(sumaCreditoMasPie * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%).
+                </span>
+              )}
+              {revisionCreditoPieOk && !desglosePieCoherente && (
+                <span>
+                  El desglose del pie (upfront + tramos + cuotón) supera el % pie documentado: reduce tramos o sube el pie (resto pie
+                  negativo:{' '}
+                  {(pctRestoPieNoTramos * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%).
+                </span>
+              )}
+              {revisionCreditoPieOk && desglosePieCoherente && !pieDocMayorOIgualBonoPie && (
+                <span>
+                  Sube «PIE a documentar» a al menos el % de bono pie / beneficio inmobiliario ({(pctBonoPieBeneficio * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%): ahora el pie doc. ({(pctPieDoc * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%) es menor.
+                </span>
+              )}
+              {revisionPorcentajesOk && (
+                <span>✓ Coherente: LTV + pie = 100%, pie doc. ≥ bono pie, y el desglose no supera el pie documentado.</span>
+              )}
             </div>
           </div>
         </div>

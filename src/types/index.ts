@@ -39,6 +39,7 @@ export interface DatosPropiedad {
   precio_lista_uf: number               // catálogo depto antes de descuentos comerciales
   descuento_uf: number
   precio_neto_uf: number               // neto tras dcto. sobre lista; el «precio de compra depto» mostrado es ×(1−bono_max_pct) si aplica
+  /** Bono pie = beneficio inmobiliario (mismo % en negocio). Pie a documentar (`pie_pct`) debe ser ≥ este %. */
   bono_descuento_pct: number           // variables_calculo.md §1
   bono_max_pct: number                 // §1; en UI: Descuento por Bonificación (%)
   bono_aplica_adicionales: boolean    // variables_calculo.md §1

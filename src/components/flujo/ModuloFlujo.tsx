@@ -114,6 +114,13 @@ export default function ModuloFlujo() {
     setDiversificacion, setCalificaIva, setMesEntregaFlujo,
   } = useAppStore()
 
+  const [tasaMensualPctStr, setTasaMensualPctStr] = useState(() =>
+    (diversificacion.diversif_tasa_mensual * 100).toFixed(1)
+  )
+  useEffect(() => {
+    setTasaMensualPctStr((diversificacion.diversif_tasa_mensual * 100).toFixed(1))
+  }, [diversificacion.diversif_tasa_mensual])
+
   const uf = global.uf_valor_clp
   const cotizacionesActivas = cotizaciones.filter(c => c.activa)
   const letras = ['A', 'B', 'C', 'D']
@@ -297,13 +304,27 @@ export default function ModuloFlujo() {
                 <label className="form-label">Tasa mensual (%)</label>
                 <div className="form-input-group">
                   <input
-                    type="number"
-                    min={0}
-                    max={5}
-                    step={0.1}
-                    className="form-input input-no-spinner"
-                    value={(diversificacion.diversif_tasa_mensual * 100).toFixed(1)}
-                    onChange={(e) => setDiversificacion({ diversif_tasa_mensual: (parseFloat(e.target.value) || 0) / 100 })}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="hip-sim-input"
+                    aria-label="Tasa mensual en porcentaje, una decimal"
+                    value={tasaMensualPctStr}
+                    onChange={(e) => setTasaMensualPctStr(e.target.value)}
+                    onBlur={() => {
+                      const raw = tasaMensualPctStr.replace(',', '.').trim()
+                      let v = parseFloat(raw)
+                      if (Number.isNaN(v)) {
+                        v = diversificacion.diversif_tasa_mensual * 100
+                      }
+                      v = Math.min(5, Math.max(0, v))
+                      v = Math.round(v * 10) / 10
+                      setDiversificacion({ diversif_tasa_mensual: v / 100 })
+                      setTasaMensualPctStr(v.toFixed(1))
+                    }}
                   />
                   <span className="suffix">%</span>
                 </div>
