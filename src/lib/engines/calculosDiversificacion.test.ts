@@ -9,6 +9,7 @@ function cotIva(escrituraUf: number, califica: boolean): Cotizacion {
     activa: true,
     modo_fuente: 'manual',
     califica_iva: califica,
+    mes_entrega_flujo: 10,
     propiedad: {
       proyecto_nombre: 'X',
       proyecto_comuna: 'C',
@@ -47,12 +48,18 @@ describe('calcularIvaTotal', () => {
 })
 
 describe('calcularDiversificacion', () => {
+  it('sin mes de entrega definido: no inyecta IVA automático (hasta indicar M entrega)', () => {
+    const uf = 1000
+    const cot = { ...cotIva(100, true), mes_entrega_flujo: null }
+    const tabla = calcularDiversificacion(DEFAULT_DIVERSIFICACION, [cot], uf)
+    expect(tabla.every((f) => f.iva_inyeccion === 0)).toBe(true)
+  })
+
   it('inyecta IVA solo en mes_entrega + 5', () => {
     const uf = 1000
     const cot = cotIva(100, true)
     const datos = {
       ...DEFAULT_DIVERSIFICACION,
-      mes_entrega_primer_depto: 10,
       diversif_iva_manual_override: true,
       diversif_iva_total_clp: 50_000,
     }

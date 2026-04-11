@@ -1,5 +1,6 @@
 import type {
   Cotizacion,
+  DatosRentabilidad,
   ResultadosCotizacion,
   FilaAmortizacion,
   ResultadosHipotecario,
@@ -247,54 +248,70 @@ export function calcularPlusvalia(
 // ARRIENDO CONVENCIONAL + AIRBNB
 // Fórmulas de Depto A (H36, H37, L40-L41 y R97)
 // ─────────────────────────────────────────────────────────────────
+
+/** Días de mes para pasar de tarifa/noche a ingreso bruto mensual (renta corta). */
+export const DIAS_MES_RENTA_CORTA = 30
+
+/**
+ * Ingreso bruto mensual renta corta: tarifa/noche × días × ocupación (0–1).
+ * Equivale a (a×b) con b = noches equivalentes al mes.
+ */
+export function brutoMensualRentaCortaClp(
+  r: Pick<DatosRentabilidad, 'airbnb_valor_dia_clp' | 'airbnb_ocupacion_pct'>
+): number {
+  return Math.round(r.airbnb_valor_dia_clp * DIAS_MES_RENTA_CORTA * r.airbnb_ocupacion_pct)
+}
+
+/**
+ * Ingreso neto mensual renta corta: (bruto)×(1−admin) − costos fijos
+ * con admin aplicado sobre bruto en pesos redondeados.
+ */
+export function ingresoNetoMensualRentaCortaClp(
+  r: Pick<
+    DatosRentabilidad,
+    'airbnb_valor_dia_clp' | 'airbnb_ocupacion_pct' | 'airbnb_admin_pct' | 'gastos_comunes_clp'
+  >
+): number {
+  const bruto = brutoMensualRentaCortaClp(r)
+  const admin_clp = Math.round(bruto * r.airbnb_admin_pct)
+  return bruto - admin_clp - r.gastos_comunes_clp
+}
+
 export function calcularArriendo(
   rent: Cotizacion['rentabilidad'],
   dividendo_total_uf: number,
   valor_escritura_uf: number,
   uf_valor_clp: number
 ): ResultadosArriendo {
-  const {
-    tipo_renta,
-    arriendo_mensual_clp,
-    airbnb_ingreso_bruto_clp,
-    airbnb_admin_pct,
-    gastos_comunes_clp,
-  } = rent
+  const { tipo_renta, arriendo_mensual_clp, airbnb_admin_pct } = rent
 
   const dividendo_clp = Math.round(dividendo_total_uf * uf_valor_clp)
 
-  // ── Renta Larga ──────────────────────────────────────────────────
-  // El arriendo_mensual_clp es el neto ingresado directamente por el usuario
-  // ── Renta Corta ──────────────────────────────────────────────────
-  // neto = ingreso_bruto - comisión admin - gastos_comunes
-  const ingreso_neto_clp = tipo_renta === 'corta'
-    ? airbnb_ingreso_bruto_clp - Math.round(airbnb_ingreso_bruto_clp * airbnb_admin_pct) - gastos_comunes_clp
-    : arriendo_mensual_clp
+  // ── Renta Larga: neto ingresado por el usuario
+  // ── Renta Corta: bruto = tarifa/noche × 30 × ocupación; neto = bruto − admin% − costos
+  const bruto_mensual_corta = brutoMensualRentaCortaClp(rent)
+  const ingreso_neto_clp =
+    tipo_renta === 'corta' ? ingresoNetoMensualRentaCortaClp(rent) : arriendo_mensual_clp
 
   const ingreso_uf = ingreso_neto_clp / uf_valor_clp
 
-  // Resultado mensual = ingreso neto - dividendo
   const resultado_mensual_clp = ingreso_neto_clp - dividendo_clp
 
-  // Cap rate anual = ingreso neto UF × 12 / valor escrituración (base patrimonio en escritura)
   const cap_rate_anual_pct =
     valor_escritura_uf > 0 ? (ingreso_uf * 12) / valor_escritura_uf : 0
 
-  // Desglose renta corta (para mostrar en UI)
-  const airbnb_admin_clp = tipo_renta === 'corta'
-    ? Math.round(airbnb_ingreso_bruto_clp * airbnb_admin_pct)
-    : 0
+  const airbnb_admin_clp =
+    tipo_renta === 'corta' ? Math.round(bruto_mensual_corta * airbnb_admin_pct) : 0
   const airbnb_resultado_clp = tipo_renta === 'corta' ? ingreso_neto_clp : 0
   const airbnb_cap_rate_anual_pct = tipo_renta === 'corta' ? cap_rate_anual_pct : 0
 
   return {
     resultado_mensual_clp,
     cap_rate_anual_pct: tipo_renta === 'larga' ? cap_rate_anual_pct : 0,
-    airbnb_ingreso_bruto_clp: airbnb_ingreso_bruto_clp,
+    airbnb_ingreso_bruto_clp: tipo_renta === 'corta' ? bruto_mensual_corta : 0,
     airbnb_admin_clp,
     airbnb_resultado_clp,
     airbnb_cap_rate_anual_pct,
-    // El valor que va al flujo siempre es el neto, independiente del tipo
     ingreso_neto_flujo_clp: ingreso_neto_clp,
   }
 }

@@ -16,6 +16,7 @@ function cotEjemploPlanilla(): Cotizacion {
     activa: true,
     modo_fuente: 'manual',
     califica_iva: true,
+    mes_entrega_flujo: 37,
     propiedad: {
       proyecto_nombre: 'Test',
       proyecto_comuna: 'Stgo',
@@ -168,17 +169,21 @@ describe('calcularArriendo', () => {
     expect(r.resultado_mensual_clp).toBe(500_000 - Math.round(10 * 40_000))
   })
 
-  it('renta corta: neto bruto − admin redondeado − gastos comunes', () => {
+  it('renta corta: neto = (tarifa×30×ocup) − admin% − gastos; bruto derivado', () => {
     const rent = {
       ...DEFAULT_RENTABILIDAD,
       tipo_renta: 'corta' as const,
-      airbnb_ingreso_bruto_clp: 1_000_000,
+      airbnb_valor_dia_clp: 50_000,
+      airbnb_ocupacion_pct: 2 / 3,
       airbnb_admin_pct: 0.25,
       gastos_comunes_clp: 50_000,
     }
-    const admin = Math.round(1_000_000 * 0.25)
+    const bruto = Math.round(50_000 * 30 * (2 / 3))
+    const admin = Math.round(bruto * 0.25)
+    const neto = bruto - admin - 50_000
     const r = calcularArriendo(rent, 5, 1000, 40_000)
-    expect(r.ingreso_neto_flujo_clp).toBe(1_000_000 - admin - 50_000)
+    expect(r.airbnb_ingreso_bruto_clp).toBe(bruto)
+    expect(r.ingreso_neto_flujo_clp).toBe(neto)
     expect(r.airbnb_admin_clp).toBe(admin)
   })
 })

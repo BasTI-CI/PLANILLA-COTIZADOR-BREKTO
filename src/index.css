@@ -276,14 +276,119 @@ input, select, textarea { font-family: var(--font-body); }
 .page-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
 /* ── Form Elements ─────────────────────────────────────────────────────── */
-.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; }
 .form-label {
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  line-height: 1.25;
 }
+
+/* Cotización: etiquetas en una línea y celdas alineadas en la grilla */
+.cotizacion-form .form-label {
+  font-size: 10px;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cotizacion-form .form-group {
+  min-width: 0;
+}
+/* Resultado: etiqueta a la izquierda, montos alineados a la derecha sin descentrar la celda */
+.cotizacion-form .stat-item {
+  align-items: stretch;
+}
+.cotizacion-form .stat-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9px;
+  text-align: left;
+  width: 100%;
+}
+.cotizacion-form .stat-value,
+.cotizacion-form .stat-sub {
+  text-align: right;
+  width: 100%;
+}
+
+/* Leyenda manual encima de gráficos Recharts */
+.chart-legend-top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  min-height: 22px;
+}
+.chart-legend-top__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.chart-legend-top__swatch {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Comparativa cotizaciones: columnas numéricas apiladas y alineadas a la derecha */
+.table-comparativa { table-layout: auto; }
+.table-comparativa thead th:first-child {
+  text-align: center;
+}
+.table-comparativa th,
+.table-comparativa td {
+  vertical-align: middle;
+}
+.table-comparativa tbody td:first-child {
+  text-align: center;
+}
+.table-comparativa tbody td:first-child .cell-stack {
+  align-items: center;
+}
+.table-comparativa .td-num {
+  text-align: right;
+}
+.table-comparativa .cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  text-align: right;
+  min-height: 2.75em;
+}
+.table-comparativa .cell-stack--left {
+  align-items: flex-start;
+  text-align: left;
+}
+.table-comparativa .cell-stack__line1 {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+.table-comparativa .cell-stack__line2 {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  line-height: 1.2;
+}
+.table-comparativa .cell-stack__ufline {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+}
+.table-comparativa .badge { flex-shrink: 0; }
 .form-input, .form-select {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
@@ -600,6 +705,17 @@ tr.total-row td {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* Inputs numéricos sin flechas (spinner), p. ej. mes de entrega / tasa */
+input.form-input.input-no-spinner::-webkit-outer-spin-button,
+input.form-input.input-no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input.form-input.input-no-spinner[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .fade-in { animation: fadeIn 0.3s ease forwards; }
 
 @keyframes slideIn {

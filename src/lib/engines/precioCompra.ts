@@ -23,3 +23,15 @@ export function precioCompraTotalUf(
 ): number {
   return precioCompraDeptoUf(p) + p.estacionamiento_uf + p.bodega_uf
 }
+
+/**
+ * Devolución de IVA en CLP: **15% × precio de compra del departamento** (UF×CLP).
+ * No incluye estacionamiento ni bodega. No usa valor de escrituración: el bono pie que financia
+ * el banco se regulariza con nota de crédito; para efectos de IVA rige el precio de transacción del depto.
+ */
+export function devolucionIvaPrecioDeptoClp(
+  p: Pick<DatosPropiedad, 'precio_neto_uf' | 'bono_max_pct'>,
+  ufVal: number
+): number {
+  return Math.round(precioCompraDeptoUf(p) * 0.15 * ufVal)
+}

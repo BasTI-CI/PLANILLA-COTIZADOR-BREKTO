@@ -2,7 +2,7 @@
 
 Referencia para **auditoría y futura librería** (p. ej. API en v2). El código debe seguir este documento; la UI solo muestra etiquetas para el asesor.
 
-**Alcance de esta revisión:** pestaña **Cotización** (una unidad = `Cotizacion`). Módulos **Flujo / IVA / diversificación** se resumen en §4; no forman parte del detalle de cotización unitaria.
+**Alcance:** **Cotización** (una unidad = `Cotizacion`), **Resumen de inversión** (series auxiliares §3.6), **Flujo / IVA / diversificación** (§4). El detalle unitario del precio/pie/crédito vive en el motor de cotización; el flujo 60 meses consolida varias unidades activas.
 
 **Motor principal:** `calcularResultadosCotizacion(cot, uf_valor_clp)` → `ResultadosCotizacion`.
 
@@ -20,7 +20,10 @@ Archivos de implementación:
 | Archivo | Rol |
 |---------|-----|
 | `src/lib/engines/calculosCotizacion.ts` | Tasación, escritura, pie total, hipotecario, plusvalía, arriendo |
-| `src/lib/engines/calculosPie.ts` | Desglose del pie en CLP (upfront, cuotas, cuotón) |
+| `src/lib/engines/calculosPie.ts` | Desglose del pie en CLP (upfront, cuotas, cuotón) sobre **valor escrituración** |
+| `src/lib/engines/calculosDiversificacion.ts` | Flujo 60 meses: pie por tramo, dividendo−arriendo post-entrega, IVA |
+| `src/lib/engines/precioCompra.ts` | Precio de compra depto (UF/CLP) y base **IVA** (15 % sobre solo depto) |
+| `src/lib/engines/resumenGraficos.ts` | Patrimonio semestral, liquidez mes 60 (comparativa Resumen) |
 | `src/lib/engines/validarCalculosCotizacion.ts` | Comprobaciones de coherencia motor vs fórmulas (§8) |
 | `src/types/index.ts` | Contrato TypeScript `Cotizacion` / `ResultadosCotizacion` |
 
@@ -55,9 +58,9 @@ Hoy el ejemplo vive en `useSupabase.ts` → tabla **`Stock_Imagina_Prueba`** (es
 
 Metadatos de proyecto (`proyecto_nombre`, comuna, barrio, dirección) vienen hoy de un **proyecto sintético** en código; en producción vendrán del recurso proyecto/inmobiliaria asociado a la unidad.
 
-**Pendiente (BD / API definitiva):** fijar nombres de tablas y columnas, tipos (decimal vs entero para %), relaciones inmobiliaria → proyecto → unidad, y **reemplazar esta tabla** por un único documento de mapeo BD → `DatosPropiedad`.
+**BD definitiva (Supabase):** activar `VITE_STOCK_BACKEND=definitivo` y ajustar en código `src/lib/stock/definitivo/schema.ts` (nombres de tablas y FK), `rawRowTypes.ts` (columnas = tipos de fila PostgREST) y `mapDefinitivo.ts` (columna → campo `UnidadSupabase` / `ProyectoSupabase`). Documenta aquí la tabla de equivalencias cuando cierres nombres reales.
 
-**Implementación en código:** capa `src/lib/stock/` — interfaz `StockRepository`, repositorio actual (`imaginaPruebaRepository.ts`), fábrica `createDefaultStockRepository`, mapeo `unidadSupabaseToDatosPropiedad` y validación previa al motor `validateUnidadSupabaseForMotor`. Las **reglas de cálculo** siguen predeterminadas en `src/lib/engines/*`; solo cambian si negocio lo exige y se actualiza el doc + tests.
+**Implementación en código:** capa `src/lib/stock/` — `StockRepository`, repos **Imagina** (`imaginaPruebaRepository.ts`) o **definitivo** (`definitivo/supabaseDefinitivoRepository.ts`), `createDefaultStockRepository` según `VITE_STOCK_BACKEND`, `unidadSupabaseToDatosPropiedad`, `validateUnidadSupabaseForMotor`. Motor: `src/lib/engines/*`.
 
 ### Rellenados en sesión (manual en formulario)
 
@@ -158,7 +161,7 @@ Sobre el **depto**, la transición **precio de compra → valor tasación** no e
 |---------|---------|-----------------------------------------------|----------------------------------------|
 | `calcularResultadosCotizacion` | `calculosCotizacion.ts` | `propiedad.precio_neto_uf`, `bono_descuento_pct`, `bono_max_pct`, `estacionamiento_uf`, `bodega_uf`, `bono_aplica_adicionales`, `pie.pie_pct`, `hipotecario.*`, `rentabilidad.*`, `uf_valor_clp` | `valor_tasacion_uf`, `valor_escritura_uf`, `beneficio_inmobiliario_uf`, `pie_total_uf`, `pie_total_clp`, `hipotecario.monto_credito_*`, `hipotecario.dividendo_*`, `plusvalia.*`, `arriendo.*` |
 | `valorTasacionDeptoUf` | `calculosCotizacion.ts` | `precio_neto_uf`, `bono_descuento_pct`, `bono_max_pct` | `valor_tasacion_uf` (paso intermedio de escritura) |
-| `calcularMontosDesglosePieClp` | `calculosPie.ts` | `valor_escritura_uf` (base CLP), `pie.*`, `uf_valor_clp` | Montos upfront / cuotas / cuotón en CLP (desglose de caja del pie; ver §9 si la base debe ser solo escritura CLP) |
+| `calcularMontosDesglosePieClp` | `calculosPie.ts` | `valor_escritura_uf`, `pie.*`, `uf_valor_clp` | Montos upfront / cuotas / cuotón en CLP (cada % sobre **valor escrituración**; §3.2 y §9) |
 | `calcularHipotecario` | `calculosCotizacion.ts` | `valor_escritura_uf`, `hipotecario.*`, `uf_valor_clp` | `monto_credito_uf`, `dividendo_*`, tabla amortización |
 | `calcularPlusvalia` | `calculosCotizacion.ts` | `valor_escritura_uf`, `pie_total_uf`, `plusvalia_anual_pct`, `plusvalia_anos` | Proyección venta / utilidad |
 | `calcularArriendo` | `calculosCotizacion.ts` | `rentabilidad.*`, dividendo, `valor_escritura_uf`, `uf_valor_clp` | Cap rates, flujo vs dividendo |
@@ -218,7 +221,7 @@ No hay validación automática de que la suma de % de desglose coincida con `pie
 
 ### `DatosRentabilidad`
 
-Usado por el mismo `calcularResultadosCotizacion` para `plusvalia` y `arriendo` (§3.4–3.5). Lista completa en `types/index.ts`.
+Usado por `calcularResultadosCotizacion` para plusvalía y arriendo (§3.4–3.5): `tipo_renta`, `plusvalia_anual_pct`, `plusvalia_anos`; renta larga: `arriendo_mensual_clp`; renta corta: `airbnb_valor_dia_clp`, `airbnb_ocupacion_pct`, `airbnb_admin_pct`, `gastos_comunes_clp` (el bruto mensual corto **no** se ingresa; se deriva en motor). Ver `types/index.ts`.
 
 ### Regla pie + crédito
 
@@ -324,60 +327,66 @@ Se usa `valor_escritura_uf` como base:
 
 ## 3.5 Arriendo
 
+Constante: `DIAS_MES_RENTA_CORTA = 30` (mes estándar para renta corta).
+
 1. `dividendo_clp = round0(dividendo_total_uf * uf_valor_clp)`
-2. `ingreso_neto_clp =`
-   - renta corta: `airbnb_bruto - round0(airbnb_bruto * airbnb_admin_pct) - gastos_comunes`
-   - renta larga: `arriendo_mensual_clp`
-3. `resultado_mensual_clp = ingreso_neto_clp - dividendo_clp`
-4. `ingreso_uf = ingreso_neto_clp / uf_valor_clp`
-5. `cap_rate_anual_pct = (ingreso_uf * 12) / valor_escritura_uf`
-6. `ingreso_neto_flujo_clp = ingreso_neto_clp`
+2. **Renta larga:** `ingreso_neto_clp = arriendo_mensual_clp` (neto ya acordado).
+3. **Renta corta:** no hay ingreso bruto manual en entrada.  
+   - `bruto_mensual_corta = round0(airbnb_valor_dia_clp * DIAS_MES_RENTA_CORTA * airbnb_ocupacion_pct)` (ocupación 0–1).  
+   - `admin_clp = round0(bruto_mensual_corta * airbnb_admin_pct)`  
+   - `ingreso_neto_clp = bruto_mensual_corta - admin_clp - gastos_comunes_clp`
+4. `resultado_mensual_clp = ingreso_neto_clp - dividendo_clp`
+5. `ingreso_uf = ingreso_neto_clp / uf_valor_clp`
+6. `cap_rate_anual_pct = (ingreso_uf * 12) / valor_escritura_uf` (perfil activo según `tipo_renta`)
+7. `ingreso_neto_flujo_clp = ingreso_neto_clp` (va a diversificación cuando aplica)
+8. En **resultados** (`ResultadosArriendo`), `airbnb_ingreso_bruto_clp` es el **bruto mensual calculado** en renta corta (0 en larga); sirve para desglose en UI/PDF, no es campo de entrada.
+
+## 3.6 Resumen de inversión (gráficos auxiliares)
+
+Implementación: `src/lib/engines/resumenGraficos.ts` (no altera el motor unitario; agrega series para comparativa).
+
+- **`seriePatrimonioUf` / `seriePatrimonioTotalUf`:** patrimonio en UF por semestre (0–10 = 5 años). Semestre 0 = `precio_compra_total_uf`; semestres pares &gt; 0 ≈ `valor_escritura_uf × (1 + plusvalía)^año`; impares interpolan. La plusvalía anual viene de `rentabilidad.plusvalia_anual_pct` por unidad.
+- **Liquidez / venta mes 60:** precio proyectado a 5 años sobre `valor_escritura_uf` menos saldo insoluto al mes 60 y menos adelanto IVA (15 % × **precio de compra solo depto**, coherente con `devolucionIvaPrecioDeptoClp` en `precioCompra.ts`).
 
 ---
 
 ## 4) IVA y flujo 60 meses
 
-Pestaña **Flujo** y lógica asociada; consume `ResultadosCotizacion` de cada cotización activa. No amplía las variables de entrada de la cotización unitaria más allá de `califica_iva` en `Cotizacion`.
+Pestaña **Flujo**; consolida cotizaciones `activa`. Entradas extra por unidad: `califica_iva`, `mes_entrega_flujo` (1–60 o `null` si no aplica). Globales: `DatosDiversificacion` (capital inicial, ahorro, tasa, override IVA, gastos de escritura/amoblado).
 
-## 4.1 IVA automatico
+## 4.1 IVA (devolución)
 
-En `calcularIvaTotal`:
+- **Base por unidad:** `15 % × precio_compra_depto_clp` — solo departamento (`precioCompraDeptoUf` × UF), **sin** estacionamiento, bodega ni valor de escrituración completo. Implementación: `devolucionIvaPrecioDeptoClp` en `precioCompra.ts`.
+- `calcularIvaTotal` suma esa base solo para `activa && califica_iva` (útil como total de referencia).
+- **Inyección en el flujo:** por cada unidad que califica y tiene `mes_entrega_flujo` definido, el monto de esa unidad entra en el mes **`mes_entrega_flujo + 5`** (si ≤ 60). Con **override manual** del IVA total: reparto proporcional por `iva_unidad` entre unidades que califican, o —si no hay base— todo el monto manual en el **primer** mes de IVA calculado entre calificantes.
 
-- se consideran cotizaciones `activa && califica_iva`
-- por cada una: `iva_unidad = valor_escritura_uf * 0.15 * uf_valor_clp`
-- `iva_total = sum(iva_unidad)`
+## 4.2 Diversificación (`calcularDiversificacion`)
 
-## 4.2 Diversificacion
+**Capital inicial efectivo (mes 1):** `diversif_capital_inicial_clp - (diversif_gastos_operacionales_clp + diversif_amoblado_otros_clp)`.
 
-Precalculos:
+Para cada `mes = 1..60`:
 
-1. `iva_total = diversif_iva_manual_override ? diversif_iva_total_clp : calcularIvaTotal(...)`
-2. `mes_iva = mes_entrega_primer_depto + 5`
-3. `cuota_pie_total = sum(pie_total_clp / (pie_n_cuotas_total || 60))`
-4. `diferencia_dividendo_arriendo = sum(dividendo_total_clp - ingreso_neto_flujo_clp)`
-
-Iteracion (`mes = 1..60`):
-
-- `egreso = mes < mes_entrega ? cuota_pie_total : max(diferencia_dividendo_arriendo, 0)`
-- `iva_este_mes = mes === mes_iva ? iva_total : 0`
-- `capital_inicio = capital_anterior + ahorro_mensual - egreso + iva_este_mes`
-- `rentabilizacion = round0(capital_inicio * diversif_tasa_mensual)`
-- `capital_fin = capital_inicio + rentabilizacion`
-- `ganancia_acumulada = round0(capital_fin - capital_inicial)`
+1. **Egreso pie:** suma por unidad activa de upfront (mes 1), cuotas antes en meses 1…nAntes, cuotas después en los meses siguientes según N, cuotón en 1…nCuotón — usando `calcularMontosDesglosePieClp(valor_escritura_uf, pie, UF)` y la misma geometría que el formulario.
+2. **Egreso dividendo − arriendo:** para cada unidad con `mes_entrega_flujo` definido y `mes > mes_entrega_flujo`, `max(0, dividendo_total_clp - ingreso_neto_flujo_clp)`; se suma entre activas.
+3. **`egreso = egreso_pie + egreso_da`**
+4. **`iva_este_mes`:** según §4.1 (automático o manual).
+5. `capital_inicio = capital_anterior + diversif_ahorro_mensual_clp - egreso + iva_este_mes`
+6. `rentabilizacion = round0(capital_inicio * diversif_tasa_mensual)`
+7. `capital_fin = capital_inicio + rentabilizacion`
+8. `ganancia_acumulada = round0(capital_fin - diversif_capital_inicial_clp)` (capital inicial **nominal** del formulario, sin restar gastos en el acumulado; los gastos ya reducen el punto de partida del loop).
 
 ---
 
 ## 5) Mapa de funciones (libreria actual)
 
 - `calcularResultadosCotizacion(cot, uf_valor_clp)`
-- `calcularMontosDesglosePieClp(pie_total_uf, pie, uf_valor_clp)`
+- `calcularMontosDesglosePieClp(valor_escritura_uf, pie, uf_valor_clp)`
 - `validarResultadosCotizacion(cot, res)` — validación cruzada motor vs fórmulas
-- `calcularHipotecario(valor_escritura_uf, hip, uf_valor_clp)`
-- `calcularPlusvalia(valor_escritura_uf, pie_total_uf, plusvalia_anual_pct, plusvalia_anos, uf_valor_clp)`
-- `calcularArriendo(rent, dividendo_total_uf, valor_escritura_uf, uf_valor_clp)`
-- `calcularIvaTotal(cotizaciones, uf_valor_clp)`
-- `calcularDiversificacion(datos, cotizaciones, uf_valor_clp)`
-- `calcularProyeccionPatrimonio(cotizaciones, anos)`
+- `calcularHipotecario` / `calcularPlusvalia` / `calcularArriendo` — internos o exportados desde `calculosCotizacion.ts`
+- `devolucionIvaPrecioDeptoClp` — `precioCompra.ts`
+- `calcularIvaTotal(cotizaciones, uf_valor_clp)` — suma referencia IVA
+- `calcularDiversificacion(datos, cotizaciones, uf_valor_clp)` — tabla 60 meses
+- `seriePatrimonioTotalUf`, `liquidezVentaUnidadClp` (y auxiliares como `saldoCreditoAlMesUF`) — `resumenGraficos.ts`
 
 ---
 
@@ -389,7 +398,7 @@ Iteracion (`mes = 1..60`):
 
 ## 7) Pendientes / decisiones
 
-- Confirmar con negocio si `mes_iva = mes_entrega + 5` es definitivo (módulo flujo).
+- Confirmar con negocio si la regla **IVA en mes `mes_entrega_flujo + 5`** por unidad (§4.1) es definitiva.
 - Validar en API que columnas `%` (p. ej. `dcto`) vengan en el mismo rango que espera `bono_descuento_pct` (0–1 decimal).
 - Ajustar tolerancias del depurador si Excel redondea distinto.
 

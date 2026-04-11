@@ -1,7 +1,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useProyectos, useUnidades } from '@/hooks/useSupabase'
-import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
+import {
+  calcularResultadosCotizacion,
+  brutoMensualRentaCortaClp,
+  ingresoNetoMensualRentaCortaClp,
+} from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { precioCompraDeptoUf, precioCompraTotalUf } from '@/lib/engines/precioCompra'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
@@ -34,18 +38,18 @@ function SectionHeading({ children }: { children: ReactNode }) {
   )
 }
 
-/** Grilla lectura izquierda → derecha */
+/** Grilla formulario: columnas suficientemente anchas para etiquetas en una línea */
 const rowGridStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 1fr))',
   gap: 12,
-  alignItems: 'start',
+  alignItems: 'stretch',
 }
 
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
     cotizaciones, global, setPropiedad, setPie, setHipotecario, setRentabilidad,
-    setModoFuente, cargarDesdeSupabase, recalcular,
+    setModoFuente, cargarDesdeSupabase,
   } = useAppStore()
 
   const cot = cotizaciones[cotizacionId]
@@ -63,11 +67,6 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   useEffect(() => {
     setUnidadSelId('')
   }, [proyectoSelId])
-
-  // Recalcular al cambiar parámetros
-  useEffect(() => {
-    if (cot?.activa) recalcular()
-  }, [cot?.propiedad, cot?.pie, cot?.hipotecario, cot?.rentabilidad, uf])
 
   const handleModoSwitch = (manual: boolean) => {
     setModoManual(manual)
@@ -132,7 +131,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const revisionPorcentajesOk = Math.abs(sumaPctRevisionHipotecario - 1) <= EPS_PCT_REVISION
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="fade-in cotizacion-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* ── Switch Supabase / Manual ── */}
       <div className="card">
@@ -436,7 +435,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Aplicar beneficio inmob. % sobre adicionales</label>
+            <label className="form-label" title="Aplicar beneficio inmobiliario % sobre adicionales (estacionamiento y bodega)">
+              Benef. inmob. s/ adicionales
+            </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No</span>
               <button
@@ -531,7 +532,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           )}
           <div className="form-group">
-            <label className="form-label">Upfront (% s/ valor escrituración)</label>
+            <label className="form-label">Upfront % (s/ escrit.)</label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -545,7 +546,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">% antes entrega (s/ valor escrituración)</label>
+            <label className="form-label" title="% antes entrega sobre valor escrituración">% Antes entr. (s/ escrit.)</label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -570,7 +571,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">% después entrega (s/ valor escrituración)</label>
+            <label className="form-label" title="% después entrega sobre valor escrituración">% Después entr. (s/ escrit.)</label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -595,7 +596,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Cuotón (% s/ valor escrituración)</label>
+            <label className="form-label">Cuotón % (s/ escrit.)</label>
             <div className="form-input-group">
               <FormattedNumberInput
                 min={0}
@@ -697,15 +698,25 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 onChange={(val) => setHipotecario(cotizacionId, { hipotecario_aprobacion_pct: val / 100 })} style={{ width: '100%' }} />
               <span className="suffix">%</span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
-              Monto crédito: {formatUF(res.hipotecario.monto_credito_uf)} UF
-            </div>
           </div>
           <div className="form-group">
             <label className="form-label">PIE a documentar %</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
             </div>
+          </div>
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              fontSize: 11,
+              color: 'var(--color-text-muted)',
+              lineHeight: 1.35,
+              padding: '2px 0 4px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              marginBottom: 2,
+            }}
+          >
+            Monto crédito: <strong style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{formatUF(res.hipotecario.monto_credito_uf)}</strong>
           </div>
           <div className="form-group">
             <label className="form-label">Tasa interés (%)</label>
@@ -821,38 +832,43 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
       {/* ── Rentabilidad ── */}
       <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">🏘️ Rentabilidad</h3>
-          <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
-            {(['larga', 'corta'] as const).map((tipo) => {
-              const active = cot.rentabilidad.tipo_renta === tipo
-              return (
-                <button
-                  key={tipo}
-                  type="button"
-                  onClick={() => setRentabilidad(cotizacionId, { tipo_renta: tipo })}
-                  style={{
-                    padding: '6px 14px', border: 'none', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 700,
-                    background: active
-                      ? tipo === 'larga' ? 'var(--color-success)' : 'var(--color-gold)'
-                      : 'rgba(255,255,255,0.04)',
-                    color: active
-                      ? tipo === 'larga' ? '#fff' : '#0a0e1a'
-                      : 'var(--color-text-muted)',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  {tipo === 'larga' ? `LARGA${active ? ' · Ok' : ''}` : `CORTA${active ? ' · Ok' : ''}`}
-                </button>
-              )
-            })}
+        <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <h3 className="card-title" style={{ margin: 0 }}>🏘️ Rentabilidad</h3>
+            <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
+              {(['larga', 'corta'] as const).map((tipo) => {
+                const active = cot.rentabilidad.tipo_renta === tipo
+                return (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => setRentabilidad(cotizacionId, { tipo_renta: tipo })}
+                    style={{
+                      padding: '6px 14px', border: 'none', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700,
+                      background: active
+                        ? tipo === 'larga' ? 'var(--color-success)' : 'var(--color-gold)'
+                        : 'rgba(255,255,255,0.04)',
+                      color: active
+                        ? tipo === 'larga' ? '#fff' : '#0a0e1a'
+                        : 'var(--color-text-muted)',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {tipo === 'larga' ? `LARGA${active ? ' · en flujo' : ''}` : `CORTA${active ? ' · en flujo' : ''}`}
+                  </button>
+                )
+              })}
+            </div>
           </div>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.45 }}>
+            <strong style={{ color: 'var(--color-text-primary)' }}>Larga / Corta</strong> solo define qué ingreso de arriendo entra al flujo de caja y al comparativo arriendo–dividendo.
+            Puedes completar ambos escenarios abajo; el resumen numérico usa la opción marcada.
+          </p>
         </div>
 
         <div style={rowGridStyle}>
-          <SectionHeading>RENTABILIDAD</SectionHeading>
-          {/* Plusvalía — siempre visible */}
+          <SectionHeading>PLUSVALÍA</SectionHeading>
           <div className="form-group">
             <label className="form-label">Plusvalía anual (%)</label>
             <div className="form-input-group">
@@ -869,91 +885,90 @@ export default function CotizacionForm({ cotizacionId }: Props) {
               onChange={(val) => setRentabilidad(cotizacionId, { plusvalia_anos: val })} />
           </div>
 
-          {cot.rentabilidad.tipo_renta === 'larga' ? (
-            /* RENTA LARGA: un solo input de arriendo neto */
-            <div className="form-group">
-              <label className="form-label">Arriendo mensual neto ($)</label>
-              <FormattedNumberInput min={0} className="form-input"
-                placeholder="$CLP neto mensual" decimals={0}
-                value={cot.rentabilidad.arriendo_mensual_clp || 0}
-                onChange={(val) => setRentabilidad(cotizacionId, { arriendo_mensual_clp: val })} />
-              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 3, display: 'block' }}>
-                Ingresa el valor neto, ya descontados corretaje y vacancia
-              </span>
+          <SectionHeading>RENTABILIDAD ARRIENDO TRADICIONAL</SectionHeading>
+          <div className="form-group" style={{ maxWidth: 300 }}>
+            <label className="form-label" title="Arriendo mensual neto (CLP)">Arriendo neto mensual ($)</label>
+            <FormattedNumberInput min={0} className="form-input"
+              placeholder="$CLP neto mensual" decimals={0}
+              value={cot.rentabilidad.arriendo_mensual_clp || 0}
+              onChange={(val) => setRentabilidad(cotizacionId, { arriendo_mensual_clp: val })} />
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 3, display: 'block', lineHeight: 1.35 }}>
+              Neto (corretaje/vacancia descontados). Flujo con <strong>LARGA</strong>.
+            </span>
+          </div>
+
+          <SectionHeading>RENTABILIDAD ARRIENDO RENTA CORTA</SectionHeading>
+          <div className="form-group" style={{ gridColumn: '1 / -1', maxWidth: 720 }}>
+            <div style={{ padding: '8px 12px', background: 'rgba(212,168,67,0.08)', borderRadius: 8, fontSize: 11, color: 'var(--color-text-muted)', borderLeft: '3px solid var(--color-gold)', lineHeight: 1.45 }}>
+              💡 <strong style={{ color: 'var(--color-text-secondary)' }}>Ingreso neto mensual</strong> = (tarifa/noche × 30 × ocupación) × (1 − admin) − costos mensuales.
+              Ese neto es el equivalente al arriendo neto mensual y alimenta el flujo cuando <strong>CORTA</strong> está activo.
             </div>
-          ) : (
-            /* RENTA CORTA: desglose bruto → neto */
-            <>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <div style={{ padding: '8px 12px', background: 'rgba(212,168,67,0.08)', borderRadius: 8, fontSize: 12, color: 'var(--color-text-muted)', borderLeft: '3px solid var(--color-gold)' }}>
-                  💡 Ingresa el ingreso bruto mensual que calculaste desde tu fuente de datos (Gemini, scrapping, etc.). El neto se calcula automáticamente.
+          </div>
+          <div className="form-group">
+            <label className="form-label" title="Cobro del propietario por noche (CLP)">Tarifa/noche ($)</label>
+            <FormattedNumberInput min={0} className="form-input" decimals={0}
+              value={cot.rentabilidad.airbnb_valor_dia_clp || 0}
+              onChange={(val) => setRentabilidad(cotizacionId, { airbnb_valor_dia_clp: val })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Ocupación mensual (%)</label>
+            <div className="form-input-group">
+              <FormattedNumberInput min={0} max={100} style={{ width: '100%' }} decimals={2}
+                value={cot.rentabilidad.airbnb_ocupacion_pct * 100}
+                onChange={(val) => setRentabilidad(cotizacionId, { airbnb_ocupacion_pct: val / 100 })} />
+              <span className="suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Administración (%)</label>
+            <div className="form-input-group">
+              <FormattedNumberInput min={0} max={100}
+                value={cot.rentabilidad.airbnb_admin_pct * 100} decimals={2}
+                onChange={(val) => setRentabilidad(cotizacionId, { airbnb_admin_pct: val / 100 })} style={{ width: '100%' }} />
+              <span className="suffix">%</span>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Costos mensuales ($)</label>
+            <FormattedNumberInput min={0} className="form-input" decimals={0}
+              value={cot.rentabilidad.gastos_comunes_clp || 0}
+              onChange={(val) => setRentabilidad(cotizacionId, { gastos_comunes_clp: val })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Ingreso neto mensual ($)</label>
+            <div
+              className="form-input"
+              style={{
+                padding: '10px 12px',
+                fontWeight: 700,
+                color: ingresoNetoMensualRentaCortaClp(cot.rentabilidad) >= 0 ? 'var(--color-success)' : 'var(--color-error)',
+              }}
+            >
+              {formatCLP(ingresoNetoMensualRentaCortaClp(cot.rentabilidad))}
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
+              Calculado; mismo valor que entra al flujo con renta <strong>CORTA</strong>.
+            </span>
+          </div>
+          {brutoMensualRentaCortaClp(cot.rentabilidad) > 0 && (() => {
+            const bruto = brutoMensualRentaCortaClp(cot.rentabilidad)
+            const admin = Math.round(bruto * cot.rentabilidad.airbnb_admin_pct)
+            const neto = ingresoNetoMensualRentaCortaClp(cot.rentabilidad)
+            return (
+              <div style={{ gridColumn: '1 / -1', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
+                <div><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Bruto mensual</div><div style={{ fontWeight: 700 }}>{formatCLP(bruto)}</div></div>
+                <span style={{ color: 'var(--color-text-muted)' }}>−</span>
+                <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Administración</div><div style={{ fontWeight: 700 }}>{formatCLP(admin)}</div></div>
+                <span style={{ color: 'var(--color-text-muted)' }}>−</span>
+                <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Costos mensuales</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.gastos_comunes_clp)}</div></div>
+                <span style={{ color: 'var(--color-text-muted)', fontSize: 18, marginLeft: 'auto', marginRight: 8 }}>=</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 10, color: '#10b981' }}>Neto mensual</div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: '#10b981' }}>{formatCLP(neto)}</div>
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Ingreso bruto mensual ($)</label>
-                <FormattedNumberInput min={0} className="form-input"
-                  placeholder="$CLP bruto por mes" decimals={0}
-                  value={cot.rentabilidad.airbnb_ingreso_bruto_clp || 0}
-                  onChange={(val) => setRentabilidad(cotizacionId, { airbnb_ingreso_bruto_clp: val })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Administración (%)</label>
-                <div className="form-input-group">
-                  <FormattedNumberInput min={0} max={100}
-                    value={cot.rentabilidad.airbnb_admin_pct * 100} decimals={2}
-                    onChange={(val) => setRentabilidad(cotizacionId, { airbnb_admin_pct: val / 100 })} style={{width: '100%'}} />
-                  <span className="suffix">%</span>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Costos mensuales ($)</label>
-                <FormattedNumberInput min={0} className="form-input" decimals={0}
-                  value={cot.rentabilidad.gastos_comunes_clp || 0}
-                  onChange={(val) => setRentabilidad(cotizacionId, { gastos_comunes_clp: val })} />
-              </div>
-
-              {/* Ref informativa */}
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  Tarifa por noche ($) <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: 3 }}>REF</span>
-                </label>
-                <FormattedNumberInput min={0} className="form-input" style={{ opacity: 0.7 }} decimals={0}
-                  value={cot.rentabilidad.airbnb_valor_dia_clp || 0}
-                  onChange={(val) => setRentabilidad(cotizacionId, { airbnb_valor_dia_clp: val })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  Ocupación mensual (%) <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: 3 }}>REF</span>
-                </label>
-                <div className="form-input-group">
-                  <FormattedNumberInput min={0} max={100} style={{ opacity: 0.7, width: '100%' }} decimals={2}
-                    value={cot.rentabilidad.airbnb_ocupacion_pct * 100}
-                    onChange={(val) => setRentabilidad(cotizacionId, { airbnb_ocupacion_pct: val / 100 })} />
-                  <span className="suffix">%</span>
-                </div>
-              </div>
-
-              {/* Neto calculado automáticamente */}
-              {cot.rentabilidad.airbnb_ingreso_bruto_clp > 0 && (() => {
-                const admin = Math.round(cot.rentabilidad.airbnb_ingreso_bruto_clp * cot.rentabilidad.airbnb_admin_pct)
-                const neto = cot.rentabilidad.airbnb_ingreso_bruto_clp - admin - cot.rentabilidad.gastos_comunes_clp
-                return (
-                  <div style={{ gridColumn: '1 / -1', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Bruto</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.airbnb_ingreso_bruto_clp)}</div></div>
-                    <span style={{ color: 'var(--color-text-muted)' }}>−</span>
-                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Administración</div><div style={{ fontWeight: 700 }}>{formatCLP(admin)}</div></div>
-                    <span style={{ color: 'var(--color-text-muted)' }}>−</span>
-                    <div style={{ color: 'var(--color-error)' }}><div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Costos mensuales</div><div style={{ fontWeight: 700 }}>{formatCLP(cot.rentabilidad.gastos_comunes_clp)}</div></div>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: 18, marginLeft: 'auto', marginRight: 8 }}>=</span>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 10, color: '#10b981' }}>Neto al flujo</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: '#10b981' }}>{formatCLP(neto)}</div>
-                    </div>
-                  </div>
-                )
-              })()}
-            </>
-          )}
+            )
+          })()}
         </div>
       </div>
 

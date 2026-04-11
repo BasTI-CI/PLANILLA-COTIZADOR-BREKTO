@@ -8,7 +8,9 @@ Este archivo resume el **prompt acordado** y la **interpretación del asistente*
 
 - **COTIZACIÓN:** OK (no tocar).
 - **SIMULADOR:** OK (no tocar).
-- **RESUMEN DE INVERSIÓN:** pendiente de los cambios detallados abajo.
+- **RESUMEN DE INVERSIÓN:** avanzado (abr 2026): comparativa con **Bono pie** y **Pie a pagar**, criterios en cabecera; gráfico de torta «Estructura» eliminado; gráfico de barras renombrado «Pie vs crédito». Pendientes: nuevos gráficos de patrimonio/plusvalía y resultado año 5 según planilla.
+- **FLUJO:** texto IVA alineado a **valor escrituración**; resumen de base UF acumulada; orden de pestañas: Flujo antes que Resumen.
+- **Stock Supabase definitivo** (inmobiliaria/proyecto): pendiente de configuración — no bloquea Resumen/Flujo.
 
 ---
 

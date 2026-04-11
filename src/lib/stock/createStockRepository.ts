@@ -1,10 +1,21 @@
 import type { StockRepository } from './types'
+import { SupabaseDefinitivoRepository } from './definitivo/supabaseDefinitivoRepository'
 import { ImaginaPruebaStockRepository } from './imaginaPruebaRepository'
 
+type StockBackendMode = 'imagina' | 'definitivo'
+
+function stockBackendMode(): StockBackendMode {
+  const raw = (import.meta.env.VITE_STOCK_BACKEND as string | undefined)?.trim().toLowerCase()
+  if (raw === 'definitivo') return 'definitivo'
+  return 'imagina'
+}
+
 /**
- * Punto único para elegir el backend de stock. Hoy: tabla de prueba Imagina.
- * Futuro: `VITE_STOCK_PROVIDER` u otra variable, o registro de implementaciones.
+ * Backend de stock: `imagina` (tabla de prueba + mock sin env) o `definitivo` (tablas productivas).
+ * `VITE_STOCK_BACKEND=definitivo` en `.env.local`.
  */
 export function createDefaultStockRepository(): StockRepository {
-  return new ImaginaPruebaStockRepository()
+  return stockBackendMode() === 'definitivo'
+    ? new SupabaseDefinitivoRepository()
+    : new ImaginaPruebaStockRepository()
 }

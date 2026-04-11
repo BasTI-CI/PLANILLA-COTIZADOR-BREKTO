@@ -1,19 +1,34 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useUF } from '@/hooks/useSupabase'
 import ModuloCotizacion from '@/components/cotizacion/ModuloCotizacion'
-import ModuloHipotecario from '@/components/hipotecario/ModuloHipotecario'
-import ModuloResumen from '@/components/resumen/ModuloResumen'
-import ModuloFlujo from '@/components/flujo/ModuloFlujo'
-import ModuloPDF from '@/components/pdf/ModuloPDF'
+
+/** Carga diferida: mismos componentes y mismos resultados; solo se parte el bundle inicial. */
+const ModuloHipotecario = lazy(() => import('@/components/hipotecario/ModuloHipotecario'))
+const ModuloResumen = lazy(() => import('@/components/resumen/ModuloResumen'))
+const ModuloFlujo = lazy(() => import('@/components/flujo/ModuloFlujo'))
+const ModuloPDF = lazy(() => import('@/components/pdf/ModuloPDF'))
+
+const MODULO_FALLBACK = (
+  <div
+    style={{
+      padding: '48px 24px',
+      textAlign: 'center',
+      color: 'var(--color-text-muted)',
+      fontSize: 14,
+    }}
+  >
+    Cargando módulo…
+  </div>
+)
 
 type ModuloActivo = 'cotizacion' | 'hipotecario' | 'resumen' | 'flujo' | 'pdf'
 
 const MODULOS = [
   { id: 'cotizacion',  label: 'Cotización',           icon: '🏠' },
   { id: 'hipotecario', label: 'Simulador Hipotecario', icon: '🏦' },
-  { id: 'resumen',     label: 'Resumen Inversión',     icon: '📊' },
   { id: 'flujo',       label: 'Flujo de Caja (60m)',   icon: '📈' },
+  { id: 'resumen',     label: 'Resumen Inversión',     icon: '📊' },
   { id: 'pdf',         label: 'Exportar PDF',          icon: '📄' },
 ] as const
 
@@ -105,12 +120,14 @@ export default function App() {
           ))}
         </div>
 
-        {/* Contenido de módulos */}
-        {moduloActivo === 'cotizacion'  && <ModuloCotizacion />}
-        {moduloActivo === 'hipotecario' && <ModuloHipotecario />}
-        {moduloActivo === 'resumen'     && <ModuloResumen />}
-        {moduloActivo === 'flujo'       && <ModuloFlujo />}
-        {moduloActivo === 'pdf'         && <ModuloPDF />}
+        {/* Contenido de módulos (Suspense solo afecta chunks diferidos; la cotización sigue en el bundle principal) */}
+        <Suspense fallback={MODULO_FALLBACK}>
+          {moduloActivo === 'cotizacion' && <ModuloCotizacion />}
+          {moduloActivo === 'hipotecario' && <ModuloHipotecario />}
+          {moduloActivo === 'resumen' && <ModuloResumen />}
+          {moduloActivo === 'flujo' && <ModuloFlujo />}
+          {moduloActivo === 'pdf' && <ModuloPDF />}
+        </Suspense>
       </main>
     </div>
   )

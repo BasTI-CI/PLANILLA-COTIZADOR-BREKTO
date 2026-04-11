@@ -16,7 +16,7 @@ import {
   DEFAULT_PIE,
   DEFAULT_DIVERSIFICACION,
 } from '@/types'
-import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
+import { devolucionIvaPrecioDeptoClp } from '@/lib/engines/precioCompra'
 
 // ─────────────────────────────────────────────
 // Cotización vacía por defecto
@@ -26,6 +26,7 @@ const cotizacionVacia = (id: number): Cotizacion => ({
   activa: false,
   modo_fuente: 'manual',
   califica_iva: false,
+  mes_entrega_flujo: null,
   propiedad: {
     proyecto_nombre: '',
     proyecto_comuna: '',
@@ -67,6 +68,7 @@ interface AppActions {
   setCotizacionActiva: (idx: number) => void
   setModoFuente: (idx: number, modo: 'supabase' | 'manual') => void
   setCalificaIva: (idx: number, califica: boolean) => void
+  setMesEntregaFlujo: (idx: number, mes: number | null) => void
 
   // Setters por sección de cotización
   setRentabilidad: (idx: number, data: Partial<DatosRentabilidad>) => void
@@ -79,19 +81,13 @@ interface AppActions {
 
   // Diversificación
   setDiversificacion: (data: Partial<DatosDiversificacion>) => void
-
-  // Vista
-  setVista: (vista: AppState['vista_actual']) => void
-
-  // Recalcular resultados
-  recalcular: () => void
 }
 
 // ─────────────────────────────────────────────
 // Store (Zustand + immer)
 // ─────────────────────────────────────────────
 export const useAppStore = create<AppState & AppActions>()(
-  immer((set, get) => ({
+  immer((set) => ({
     // ── Estado inicial ──────────────────────
     global: {
       inversionista_nombre: '',
@@ -101,9 +97,7 @@ export const useAppStore = create<AppState & AppActions>()(
     },
     cotizaciones: [cotizacionVacia(0)],  // empieza con 1 cotización vacía
     diversificacion: { ...DEFAULT_DIVERSIFICACION },
-    resultados: [],
     cotizacion_activa_idx: 0,
-    vista_actual: 'cotizacion',
 
     // ── Datos globales ──────────────────────
     setGlobal: (data) =>
@@ -136,6 +130,16 @@ export const useAppStore = create<AppState & AppActions>()(
     setModoFuente: (idx, modo) =>
       set((state) => { state.cotizaciones[idx].modo_fuente = modo }),
 
+    setMesEntregaFlujo: (idx, mes) =>
+      set((state) => {
+        if (mes === null) {
+          state.cotizaciones[idx].mes_entrega_flujo = null
+          return
+        }
+        const m = Math.min(60, Math.max(1, Math.round(mes)))
+        state.cotizaciones[idx].mes_entrega_flujo = m
+      }),
+
     setCalificaIva: (idx, califica) =>
       set((state) => {
         state.cotizaciones[idx].califica_iva = califica
@@ -144,10 +148,11 @@ export const useAppStore = create<AppState & AppActions>()(
           state.diversificacion.diversif_iva_total_clp =
             state.cotizaciones
               .filter((c) => c.activa && c.califica_iva)
-              .reduce((sum, c) => {
-                const r = calcularResultadosCotizacion(c, state.global.uf_valor_clp)
-                return sum + r.valor_escritura_uf * 0.15 * state.global.uf_valor_clp
-              }, 0)
+              .reduce(
+                (sum, c) =>
+                  sum + devolucionIvaPrecioDeptoClp(c.propiedad, state.global.uf_valor_clp),
+                0
+              )
         }
       }),
 
@@ -182,18 +187,5 @@ export const useAppStore = create<AppState & AppActions>()(
     // ── Diversificación ─────────────────────
     setDiversificacion: (data) =>
       set((state) => { Object.assign(state.diversificacion, data) }),
-
-    // ── Vista ───────────────────────────────
-    setVista: (vista) =>
-      set((state) => { state.vista_actual = vista }),
-
-    // ── Recalcular ──────────────────────────
-    recalcular: () => {
-      const { cotizaciones, global } = get()
-      const resultados = cotizaciones
-        .filter((c) => c.activa)
-        .map((c) => calcularResultadosCotizacion(c, global.uf_valor_clp))
-      set((state) => { state.resultados = resultados })
-    },
   }))
 )

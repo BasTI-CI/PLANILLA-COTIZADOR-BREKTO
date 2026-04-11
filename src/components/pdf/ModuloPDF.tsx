@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
-import { calcularDiversificacion } from '@/lib/engines/calculosDiversificacion'
+import { calcularDiversificacion, calcularIvaTotal } from '@/lib/engines/calculosDiversificacion'
 import TablaCashflow60m from '@/components/flujo/TablaCashflow60m'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
@@ -234,8 +234,31 @@ export default function ModuloPDF() {
               </p>
               <TablaCashflow60m
                 tabla={tabla60}
-                mesEntrega={diversificacion.mes_entrega_primer_depto}
-                mesIVA={diversificacion.mes_entrega_primer_depto + 1}
+                mesesEntrega={[
+                  ...new Set(
+                    activas
+                      .map((c) => c.mes_entrega_flujo)
+                      .filter((m): m is number => m != null)
+                  ),
+                ].sort((a, b) => a - b)}
+                mesesIVA={[
+                  ...new Set(
+                    activas
+                      .filter((c) => c.califica_iva && c.mes_entrega_flujo != null)
+                      .map((c) => (c.mes_entrega_flujo as number) + 5)
+                      .filter((m) => m >= 1 && m <= 60)
+                  ),
+                ].sort((a, b) => a - b)}
+                resumenContexto={{
+                  capitalInicialClp: diversificacion.diversif_capital_inicial_clp,
+                  tasaMensualDecimal: diversificacion.diversif_tasa_mensual,
+                  gastosOperacionalesClp: diversificacion.diversif_gastos_operacionales_clp,
+                  amobladoOtrosClp: diversificacion.diversif_amoblado_otros_clp,
+                  ahorroMensualClp: diversificacion.diversif_ahorro_mensual_clp,
+                  ivaTotalReferenciaClp: diversificacion.diversif_iva_manual_override
+                    ? diversificacion.diversif_iva_total_clp
+                    : calcularIvaTotal(cotizaciones, uf),
+                }}
                 pdfMode
               />
             </div>

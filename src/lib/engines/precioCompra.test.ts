@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { precioCompraDeptoUf, precioCompraTotalUf } from './precioCompra'
+import {
+  precioCompraDeptoUf,
+  precioCompraTotalUf,
+  devolucionIvaPrecioDeptoClp,
+} from './precioCompra'
 
 describe('precioCompraDeptoUf / precioCompraTotalUf', () => {
   it('ejemplo planilla: neto post-lista 3589,2; bonif 10% → compra depto 3230,28', () => {
@@ -11,5 +15,11 @@ describe('precioCompraDeptoUf / precioCompraTotalUf', () => {
     }
     expect(precioCompraDeptoUf(p)).toBeCloseTo(3230.28, 2)
     expect(precioCompraTotalUf(p)).toBeCloseTo(3230.28, 2)
+  })
+
+  it('devolución IVA = 15% × precio compra depto × UF', () => {
+    const p = { precio_neto_uf: 1000, bono_max_pct: 0 }
+    const uf = 39_000
+    expect(devolucionIvaPrecioDeptoClp(p, uf)).toBe(Math.round(1000 * 0.15 * uf))
   })
 })

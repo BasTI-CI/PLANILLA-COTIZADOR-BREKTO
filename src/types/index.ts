@@ -73,7 +73,8 @@ export interface DatosHipotecario {
 export type TipoRenta = 'larga' | 'corta'
 
 export interface DatosRentabilidad {
-  tipo_renta: TipoRenta                  // selector mutuamente excluyente
+  /** Qué perfil de ingreso usa el flujo de caja y el comparativo arriendo–dividendo (ambos perfiles se pueden llenar abajo). */
+  tipo_renta: TipoRenta
   plusvalia_anual_pct: number            // decimal (ej: 0.042 = 4.2%)
   plusvalia_anos: number                 // horizonte (default: 5)
 
@@ -82,13 +83,12 @@ export interface DatosRentabilidad {
   arriendo_mensual_clp: number           // $CLP neto final que va al flujo
 
   // ── Renta Corta (AirBnB / alquiler temporal) ─────────────────────
-  // El arriendo_mensual_clp se calcula = ingreso_bruto - admin - gastos_comunes
-  airbnb_ingreso_bruto_clp: number       // ingreso mensual bruto calculado externamente
-  airbnb_admin_pct: number               // % comisión plataforma/administrador (default: 0.25)
-  gastos_comunes_clp: number             // $CLP/mes gastos comunes
-  // Campos informativos (no entran al flujo directamente):
-  airbnb_valor_dia_clp: number           // $CLP por noche (referencia)
-  airbnb_ocupacion_pct: number           // % ocupación mensual (referencia)
+  airbnb_admin_pct: number               // % comisión plataforma/administrador (decimal)
+  gastos_comunes_clp: number             // $CLP/mes costos fijos
+  /** Tarifa/noche que cobra el propietario (CLP). */
+  airbnb_valor_dia_clp: number
+  /** Ocupación mensual 0–1 (p. ej. 0,68 = 68%). */
+  airbnb_ocupacion_pct: number
 }
 
 // Objeto cotización completo (1 de hasta 4)
@@ -97,6 +97,8 @@ export interface Cotizacion {
   modo_fuente: FuenteDatos               // 'supabase' | 'manual'
   activa: boolean                        // si esta cotización tiene datos
   califica_iva: boolean                  // ☑ checkbox hoja Flujo — ¿la unidad recibe devolución IVA?
+  /** Mes absoluto (1–60) de entrega en el horizonte de 60 meses; `null` = sin definir (el asesor lo ingresa en Flujo). */
+  mes_entrega_flujo: number | null
 
   propiedad: DatosPropiedad
   pie: DatosDesglosePie
@@ -174,16 +176,14 @@ export interface DatosDiversificacion {
   diversif_ahorro_mensual_clp: number
 
   // IVA — calculado automáticamente desde las cotizaciones con califica_iva=true
-  // 15% × valor_escritura_uf × uf_valor_clp por cada cotización elegible
+  // 15% × precio de compra del solo departamento (UF×CLP); sin est/bod ni base escrituración
   // Se puede sobrescribir manualmente si el usuario lo necesita
   diversif_iva_manual_override: boolean  // false = calculado auto, true = ingresado manual
   diversif_iva_total_clp: number         // monto de devolución IVA total
 
-  // Mes de entrega del primer departamento
-  // A partir de este mes, el flujo incluye (Dividendo - Arriendo) en vez de cuota pie
-  mes_entrega_primer_depto: number       // mes absoluto (1-60)
-
-  diversif_gasto_escrituracion_clp: number
+  /** Gastos de escrituración desglosados (se descuentan del capital inicial al inicio) */
+  diversif_gastos_operacionales_clp: number
+  diversif_amoblado_otros_clp: number
 }
 
 export interface FilaDiversificacion {
@@ -206,12 +206,8 @@ export interface AppState {
   cotizaciones: Cotizacion[]             // 1 a 4 elementos
   diversificacion: DatosDiversificacion
 
-  // Resultados calculados (actualizados automáticamente)
-  resultados: ResultadosCotizacion[]
-
   // UI state
   cotizacion_activa_idx: number          // cuál cotización está enfocada
-  vista_actual: 'cotizacion' | 'resumen' | 'flujo' | 'pdf'
 }
 
 // ------------------------------------------------------------------
@@ -269,7 +265,6 @@ export const DEFAULT_RENTABILIDAD: DatosRentabilidad = {
   plusvalia_anual_pct: 0.042,            // 4.2%
   plusvalia_anos: 5,
   arriendo_mensual_clp: 0,
-  airbnb_ingreso_bruto_clp: 0,
   airbnb_admin_pct: 0.25,
   gastos_comunes_clp: 0,
   airbnb_valor_dia_clp: 0,
@@ -294,6 +289,6 @@ export const DEFAULT_DIVERSIFICACION: DatosDiversificacion = {
   diversif_ahorro_mensual_clp: 600_000,
   diversif_iva_manual_override: false,   // auto-calculado
   diversif_iva_total_clp: 0,
-  mes_entrega_primer_depto: 37,          // mes 37 por defecto (a ajustar por usuario)
-  diversif_gasto_escrituracion_clp: 3_000_000,
+  diversif_gastos_operacionales_clp: 2_000_000,
+  diversif_amoblado_otros_clp: 1_000_000,
 }

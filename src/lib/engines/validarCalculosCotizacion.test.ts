@@ -14,6 +14,7 @@ function cotBase(): Cotizacion {
     activa: true,
     modo_fuente: 'manual',
     califica_iva: false,
+    mes_entrega_flujo: 37,
     propiedad: {
       proyecto_nombre: 'T',
       proyecto_comuna: 'C',

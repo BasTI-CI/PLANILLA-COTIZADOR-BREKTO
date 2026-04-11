@@ -1,11 +1,4 @@
-export type { StockRepository, StockValidationIssue, StockValidationResult } from './types'
+/** Punto de entrada mínimo: solo lo que consume la app vía `@/lib/stock`. */
 export { createDefaultStockRepository } from './createStockRepository'
-export {
-  ImaginaPruebaStockRepository,
-  mapStockRowToUnidad,
-  MOCK_UNIDADES_IMAGINA,
-  PROYECTO_IMAGINA,
-} from './imaginaPruebaRepository'
 export { unidadSupabaseToDatosPropiedad } from './mapToDatosPropiedad'
-export type { MapUnidadToPropiedadOptions } from './mapToDatosPropiedad'
 export { validateUnidadSupabaseForMotor } from './validateStockInputs'
