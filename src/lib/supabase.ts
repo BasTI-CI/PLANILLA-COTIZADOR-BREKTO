@@ -1,9 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Cliente Supabase solo si existen `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
- * Sin ellas la app arranca igual (cotización manual); los hooks usan datos mock.
- * La BD enlazada es provisional (validación); ver variables_calculo.md — prioridad motor vs capa datos.
+ * Cliente oficial `@supabase/supabase-js`.
+ * En el panel de Supabase: Project URL → `VITE_SUPABASE_URL`, anon public → `VITE_SUPABASE_ANON_KEY`
+ * (equivalente a SUPABASE_URL / SUPABASE_ANON_KEY en documentación; Vite solo expone variables con prefijo `VITE_`).
+ *
+ * Sin URL/key la app puede arrancar, pero la ruta `/access` no podrá invocar la Edge Function de validación.
  */
 let client: SupabaseClient | null = null
 

@@ -761,6 +761,55 @@ input.form-input.input-no-spinner[type='number'],
 }
 .slide-in { animation: slideIn 0.25s ease forwards; }
 
+/* ── Acceso SSO (/access, /unauthorized) ──────────────────────────────── */
+.auth-gate-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(212, 168, 67, 0.12), transparent);
+}
+
+.auth-gate-card {
+  max-width: 420px;
+  width: 100%;
+  padding: 28px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.auth-gate-title {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
+}
+
+.auth-gate-title.auth-gate-error {
+  color: var(--color-error);
+}
+
+.auth-gate-message {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.auth-gate-hint {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.auth-gate-hint a {
+  color: var(--color-accent-light);
+}
+
 /* ── PDF Print View ────────────────────────────────────────────────────── */
 @media print {
   .app-header, .module-tabs, .cotizacion-tabs, .btn, button { display: none !important; }

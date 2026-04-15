@@ -1,7 +1,7 @@
 # Build: Netlify detecta pnpm-lock.yaml e instala dependencias antes de `command`.
 # Variables obligatorias en el panel (Site → Environment variables), prefijo VITE_:
-#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
-# Opcional: VITE_STOCK_BACKEND=imagina | definitivo
+#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (validación SSO vía Edge Function validate-cotizador-access)
+# Opcional: VITE_STOCK_BACKEND=imagina | definitivo, VITE_COTIZADOR_SESSION_MAX_MS
 
 [build]
   command = "pnpm run build"
