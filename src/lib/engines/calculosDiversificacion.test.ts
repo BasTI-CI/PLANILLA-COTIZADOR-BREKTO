@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Cotizacion } from '@/types'
-import { DEFAULT_DIVERSIFICACION, DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_RENTABILIDAD } from '@/types'
+import { DEFAULT_DIVERSIFICACION, DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_PROMOCIONES, DEFAULT_RENTABILIDAD } from '@/types'
 import { calcularIvaTotal, calcularDiversificacion } from './calculosDiversificacion'
 
 function cotIva(escrituraUf: number, califica: boolean): Cotizacion {
@@ -35,6 +35,7 @@ function cotIva(escrituraUf: number, califica: boolean): Cotizacion {
     pie: { ...DEFAULT_PIE, pie_pct: 0.1 },
     hipotecario: { ...DEFAULT_HIPOTECARIO, hipotecario_aprobacion_pct: 0.9 },
     rentabilidad: { ...DEFAULT_RENTABILIDAD },
+    promociones: { ...DEFAULT_PROMOCIONES },
   }
 }
 

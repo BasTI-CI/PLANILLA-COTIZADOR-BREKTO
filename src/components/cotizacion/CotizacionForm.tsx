@@ -11,7 +11,8 @@ import { precioCompraDeptoUf, precioCompraTotalUf } from '@/lib/engines/precioCo
 import FormattedNumberInput from '../ui/FormattedNumberInput'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
-import type { DatosPropiedad } from '@/types'
+import type { DatosPropiedad, PromocionesCotizacion } from '@/types'
+import { DEFAULT_PROMOCIONES } from '@/types'
 
 interface Props { cotizacionId: number }
 
@@ -49,7 +50,7 @@ const rowGridStyle: CSSProperties = {
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
     cotizaciones, global, setPropiedad, setPie, setHipotecario, setRentabilidad,
-    setModoFuente, cargarDesdeSupabase,
+    setModoFuente, cargarDesdeSupabase, setPromociones,
   } = useAppStore()
 
   const cot = cotizaciones[cotizacionId]
@@ -91,6 +92,23 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   }
 
   if (!cot) return null
+
+  const promos = cot.promociones ?? DEFAULT_PROMOCIONES
+
+  const PROMO_ITEMS: { key: keyof PromocionesCotizacion; label: string }[][] = [
+    [
+      { key: 'arriendo_garantizado', label: 'Arriendo garantizado' },
+      { key: 'kit_arriendo', label: 'Kit de arriendo' },
+      { key: 'kit_inversionista', label: 'Kit de inversionista' },
+      { key: 'credito_pie_institucion', label: 'Crédito pie con institución financiera' },
+    ],
+    [
+      { key: 'bono_amoblado', label: 'Bono amoblado' },
+      { key: 'credito_aval', label: 'Crédito aval' },
+      { key: 'promo_gastos_operacionales', label: 'Promoción gastos operacionales' },
+      { key: 'comentario_devolucion_iva', label: 'Comentario: "Cliente hará devolución de IVA"' },
+    ],
+  ]
 
   // Tasación depto: `valor_tasacion_uf` sale del motor `calcularResultadosCotizacion` → `valorTasacionDeptoUf` en `src/lib/engines/calculosCotizacion.ts` (no se calcula en este archivo).
   const res = calcularResultadosCotizacion(cot, uf)
@@ -237,6 +255,48 @@ export default function CotizacionForm({ cotizacionId }: Props) {
             </div>
           </>
         )}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">📈 Promociones de la cotización</h3>
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Leyenda en PDF (cotizaciones individuales)</span>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))',
+            gap: '10px 28px',
+            alignItems: 'start',
+          }}
+        >
+          {PROMO_ITEMS.map((col, ci) => (
+            <div key={ci} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {col.map(({ key, label }) => (
+                <label
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    lineHeight: 1.35,
+                    userSelect: 'none',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!promos[key]}
+                    onChange={(e) => setPromociones(cotizacionId, { [key]: e.target.checked })}
+                    style={{ marginTop: 3, flexShrink: 0 }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Cotización: antecedentes, precios, resumen ── */}

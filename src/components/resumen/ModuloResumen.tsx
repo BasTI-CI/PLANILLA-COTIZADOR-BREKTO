@@ -285,6 +285,46 @@ export default function ModuloResumen() {
           </div>
         </div>
         <div style={{ width: '100%', height: 260, minHeight: 260, position: 'relative' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              left: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(212,168,67,0.35)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              lineHeight: 1.35,
+            }}
+          >
+            Inicio (sem. 0): {fmtUF(dataPatrimonio[0]?.patrimonioUf ?? 0)}
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(212,168,67,0.35)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              textAlign: 'right',
+              lineHeight: 1.35,
+            }}
+          >
+            Final ciclo (sem. {dataPatrimonio[dataPatrimonio.length - 1]?.semestre ?? 10}):{' '}
+            {fmtUF(dataPatrimonio[dataPatrimonio.length - 1]?.patrimonioUf ?? 0)}
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={dataPatrimonio} margin={{ top: 4, right: 12, left: 8, bottom: 28 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -331,6 +371,45 @@ export default function ModuloResumen() {
           </div>
         </div>
         <div style={{ width: '100%', height: 260, minHeight: 260, position: 'relative' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              left: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(59,130,246,0.4)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              lineHeight: 1.35,
+            }}
+          >
+            Inicio (mes 1): {fmtCLP(dataCajaDiversificacion[0]?.caja ?? 0)}
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(59,130,246,0.4)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              textAlign: 'right',
+              lineHeight: 1.35,
+            }}
+          >
+            Final ciclo (mes 60): {fmtCLP(dataCajaDiversificacion[dataCajaDiversificacion.length - 1]?.caja ?? 0)}
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={dataCajaDiversificacion} margin={{ top: 4, right: 12, left: 8, bottom: 28 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -427,6 +506,45 @@ export default function ModuloResumen() {
           </div>
         </div>
         <div style={{ width: '100%', height: 280, minHeight: 280, position: 'relative' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              left: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(16,185,129,0.45)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              lineHeight: 1.35,
+            }}
+          >
+            Inicio (mes 1): {fmtCLP(dataFinancieroFinal[0]?.caja ?? 0)}
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 10,
+              zIndex: 2,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(16,185,129,0.45)',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#f1f5f9',
+              maxWidth: '42%',
+              textAlign: 'right',
+              lineHeight: 1.35,
+            }}
+          >
+            Final ciclo (mes 60): {fmtCLP(dataFinancieroFinal[dataFinancieroFinal.length - 1]?.caja ?? 0)}
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={dataFinancieroFinal} margin={{ top: 4, right: 12, left: 8, bottom: 28 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

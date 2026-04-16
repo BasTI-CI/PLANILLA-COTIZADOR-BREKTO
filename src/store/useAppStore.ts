@@ -9,12 +9,14 @@ import type {
   DatosDesglosePie,
   DatosHipotecario,
   DatosRentabilidad,
+  PromocionesCotizacion,
 } from '@/types'
 import {
   DEFAULT_HIPOTECARIO,
   DEFAULT_RENTABILIDAD,
   DEFAULT_PIE,
   DEFAULT_DIVERSIFICACION,
+  DEFAULT_PROMOCIONES,
 } from '@/types'
 import { devolucionIvaPrecioDeptoClp } from '@/lib/engines/precioCompra'
 
@@ -52,6 +54,7 @@ const cotizacionVacia = (id: number): Cotizacion => ({
   pie: { ...DEFAULT_PIE },
   hipotecario: { ...DEFAULT_HIPOTECARIO },
   rentabilidad: { ...DEFAULT_RENTABILIDAD },
+  promociones: { ...DEFAULT_PROMOCIONES },
 })
 
 // ─────────────────────────────────────────────
@@ -78,6 +81,8 @@ interface AppActions {
 
   // Cargar unidad desde Supabase (reemplaza toda la propiedad)
   cargarDesdeSupabase: (idx: number, propiedad: DatosPropiedad) => void
+
+  setPromociones: (idx: number, data: Partial<PromocionesCotizacion>) => void
 
   // Diversificación
   setDiversificacion: (data: Partial<DatosDiversificacion>) => void
@@ -182,6 +187,11 @@ export const useAppStore = create<AppState & AppActions>()(
         state.cotizaciones[idx].propiedad = propiedad
         state.cotizaciones[idx].modo_fuente = 'supabase'
         state.cotizaciones[idx].activa = true
+      }),
+
+    setPromociones: (idx, data) =>
+      set((state) => {
+        Object.assign(state.cotizaciones[idx].promociones, data)
       }),
 
     // ── Diversificación ─────────────────────

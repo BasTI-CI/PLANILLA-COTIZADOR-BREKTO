@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Cotizacion } from '@/types'
-import { DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_RENTABILIDAD } from '@/types'
+import { DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_PROMOCIONES, DEFAULT_RENTABILIDAD } from '@/types'
 import { calcularResultadosCotizacion } from './calculosCotizacion'
 import {
   recomputarValorEscrituraUf,
@@ -40,6 +40,7 @@ function cotBase(): Cotizacion {
     pie: { ...DEFAULT_PIE, pie_pct: 0.2 },
     hipotecario: { ...DEFAULT_HIPOTECARIO, hipotecario_aprobacion_pct: 0.8 },
     rentabilidad: { ...DEFAULT_RENTABILIDAD },
+    promociones: { ...DEFAULT_PROMOCIONES },
   }
 }
 

@@ -19,6 +19,30 @@ export interface DatosGlobales {
 // ------------------------------------------------------------------
 export type FuenteDatos = 'supabase' | 'manual'
 
+/** Promociones comerciales (checkboxes en cotización → leyenda en PDF individual). */
+export interface PromocionesCotizacion {
+  arriendo_garantizado: boolean
+  kit_arriendo: boolean
+  kit_inversionista: boolean
+  credito_pie_institucion: boolean
+  bono_amoblado: boolean
+  credito_aval: boolean
+  promo_gastos_operacionales: boolean
+  /** Leyenda fija si está marcado. */
+  comentario_devolucion_iva: boolean
+}
+
+export const DEFAULT_PROMOCIONES: PromocionesCotizacion = {
+  arriendo_garantizado: false,
+  kit_arriendo: false,
+  kit_inversionista: false,
+  credito_pie_institucion: false,
+  bono_amoblado: false,
+  credito_aval: false,
+  promo_gastos_operacionales: false,
+  comentario_devolucion_iva: false,
+}
+
 export interface DatosPropiedad {
   // Identificación del proyecto
   proyecto_nombre: string
@@ -105,6 +129,7 @@ export interface Cotizacion {
   pie: DatosDesglosePie
   hipotecario: DatosHipotecario
   rentabilidad: DatosRentabilidad
+  promociones: PromocionesCotizacion
 }
 
 // ------------------------------------------------------------------
