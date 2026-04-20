@@ -26,7 +26,9 @@ export default function AccessPage() {
       if (!isSupabaseConfigured()) {
         if (!cancelled) {
           setPhase('error')
-          setErrorMessage('Falta configurar Supabase (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).')
+          setErrorMessage(
+            'Falta configurar Supabase (VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY o VITE_SUPABASE_PUBLISHABLE_KEY).'
+          )
         }
         return
       }

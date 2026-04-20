@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { useProyectos, useUnidades } from '@/hooks/useSupabase'
+import { useInmobiliarias, useProyectosByInmobiliaria, useUnidades } from '@/hooks/useSupabase'
 import {
   calcularResultadosCotizacion,
   brutoMensualRentaCortaClp,
@@ -60,10 +60,20 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const uf = global.uf_valor_clp
 
   const [modoManual, setModoManual] = useState(cot?.modo_fuente === 'manual')
-  const { proyectos, loading: loadingProys } = useProyectos()
+  const { inmobiliarias, loading: loadingInmos, error: errorInmobiliarias } = useInmobiliarias()
+  const [inmoSelId, setInmoSelId] = useState<string>('')
+  const { proyectos, loading: loadingProys, error: errorProyectos } = useProyectosByInmobiliaria(inmoSelId || null)
+
+  useEffect(() => {
+    setModoManual(cot?.modo_fuente === 'manual')
+  }, [cot?.modo_fuente])
   const [proyectoSelId, setProyectoSelId] = useState<string>('')
   const [unidadSelId, setUnidadSelId] = useState<string>('')
   const { unidades, loading: loadingUnidades, error: errorUnidades } = useUnidades(proyectoSelId)
+
+  useEffect(() => {
+    setProyectoSelId('')
+  }, [inmoSelId])
 
   useEffect(() => {
     setUnidadSelId('')
@@ -198,16 +208,105 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   border: '1px solid rgba(245, 158, 11, 0.35)',
                 }}
               >
-                <strong>Modo demostración:</strong> no hay variables <code style={{ fontSize: 11 }}>VITE_SUPABASE_*</code> en{' '}
-                <code style={{ fontSize: 11 }}>.env.local</code>. El desplegable de unidades usa{' '}
-                <strong>stock de prueba Imagina</strong> embebido en la app (misma forma que la tabla{' '}
-                <code style={{ fontSize: 11 }}>Stock_Imagina_Prueba</code>). Con Supabase configurado se listan las filas reales del proyecto.
+                <strong>Modo demostración:</strong> no hay <code style={{ fontSize: 11 }}>VITE_SUPABASE_URL</code> y clave pública (
+                <code style={{ fontSize: 11 }}>VITE_SUPABASE_ANON_KEY</code> o{' '}
+                <code style={{ fontSize: 11 }}>VITE_SUPABASE_PUBLISHABLE_KEY</code>) en{' '}
+                <code style={{ fontSize: 11 }}>.env</code>. El desplegable usa{' '}
+                <strong>stock de prueba Imagina</strong> embebido. Con Supabase configurado se cargan proyectos desde la base de datos.
               </p>
             )}
-            <div className="card-grid-2">
+            {(errorInmobiliarias || errorProyectos) && (
+              <p
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  color: 'var(--color-error)',
+                  margin: '0 0 12px',
+                  padding: '10px 12px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: 8,
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                }}
+              >
+                {errorInmobiliarias && <>Inmobiliarias: {errorInmobiliarias}. </>}
+                {errorProyectos && <>Proyectos: {errorProyectos}</>}
+              </p>
+            )}
+            {isSupabaseConfigured() && !loadingInmos && !errorInmobiliarias && inmobiliarias.length === 0 && (
+              <>
+                <p
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: '#f59e0b',
+                    margin: '0 0 8px',
+                    padding: '10px 12px',
+                    background: 'rgba(245, 158, 11, 0.12)',
+                    borderRadius: 8,
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                  }}
+                >
+                  <strong>La consulta devolvió 0 inmobiliarias</strong> con la clave del navegador (rol{' '}
+                  <code style={{ fontSize: 11 }}>anon</code>). En el SQL Editor ves filas porque ese rol suele ser{' '}
+                  <code style={{ fontSize: 11 }}>postgres</code>, que no está sujeto a RLS como el cliente. Si RLS está
+                  activo sin política para <code style={{ fontSize: 11 }}>anon</code>, PostgREST devuelve lista vacía. En{' '}
+                  <strong>Authentication → Policies</strong> o SQL, permití SELECT para anon (ejemplo abajo; si ya hay
+                  políticas, adaptá o eliminá duplicados).
+                </p>
+                <pre
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                    margin: '0 0 12px',
+                    padding: '12px 14px',
+                    background: 'rgba(0,0,0,0.25)',
+                    borderRadius: 8,
+                    overflow: 'auto',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+{`alter table public.proyectos enable row level security;
+alter table public.inmobiliarias enable row level security;
+
+drop policy if exists "proyectos_select_anon" on public.proyectos;
+create policy "proyectos_select_anon"
+  on public.proyectos for select to anon using (true);
+
+drop policy if exists "inmobiliarias_select_anon" on public.inmobiliarias;
+create policy "inmobiliarias_select_anon"
+  on public.inmobiliarias for select to anon using (true);`}
+                </pre>
+              </>
+            )}
+            <div className="card-grid-3">
+              <div className="form-group">
+                <label className="form-label">Inmobiliaria</label>
+                {loadingInmos ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                    <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                  </div>
+                ) : (
+                  <select
+                    className="form-select"
+                    value={inmoSelId}
+                    onChange={(e) => setInmoSelId(e.target.value)}
+                  >
+                    <option value="">— Seleccionar inmobiliaria —</option>
+                    {inmobiliarias.map((im) => (
+                      <option key={im.id} value={im.id}>
+                        {im.nombre}{im.codigo ? ` · ${im.codigo}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <div className="form-group">
                 <label className="form-label">Proyecto</label>
-                {loadingProys ? (
+                {!inmoSelId ? (
+                  <select className="form-select" disabled value="">
+                    <option value="">— Primero elegí inmobiliaria —</option>
+                  </select>
+                ) : loadingProys ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                     <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
                   </div>
@@ -216,7 +315,10 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                     onChange={(e) => setProyectoSelId(e.target.value)}>
                     <option value="">— Seleccionar proyecto —</option>
                     {proyectos.map((pr) => (
-                      <option key={pr.id} value={pr.id}>{pr.nombre} · {pr.comuna}</option>
+                      <option key={pr.id} value={pr.id}>
+                        {pr.nombre}
+                        {(pr.comuna || pr.inmobiliaria) && ` · ${pr.comuna || pr.inmobiliaria}`}
+                      </option>
                     ))}
                   </select>
                 )}
@@ -248,7 +350,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 )}
                 {isSupabaseConfigured() && proyectoSelId && !loadingUnidades && !errorUnidades && unidades.length === 0 && (
                   <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6, marginBottom: 0 }}>
-                    La consulta no devolvió filas. Comprueba que exista la tabla <code style={{ fontSize: 10 }}>Stock_Imagina_Prueba</code> y políticas RLS para lectura.
+                    Aún no hay unidades de stock enlazadas a este proyecto en Supabase. Cuando exista la tabla de unidades y el mapeo, aparecerán aquí. Mientras tanto podés usar modo <strong>Manual</strong> para ingresar datos.
                   </p>
                 )}
               </div>

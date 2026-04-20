@@ -4,11 +4,78 @@
  */
 import { useState, useEffect } from 'react'
 import { createDefaultStockRepository } from '@/lib/stock'
-import { PROYECTO_IMAGINA } from '@/lib/stock/imaginaPruebaRepository'
+import { INMOBILIARIA_IMAGINA, PROYECTO_IMAGINA } from '@/lib/stock/imaginaPruebaRepository'
 
 const stockRepo = createDefaultStockRepository()
 
-// ─── Hook: Proyectos ───────────────────────────────────────────────
+// ─── Hook: Inmobiliarias (catálogo activo) ──────────────────────────
+export function useInmobiliarias() {
+  const [inmobiliarias, setInmobiliarias] = useState<Awaited<ReturnType<typeof stockRepo.listInmobiliarias>>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchInmobiliarias() {
+      setLoading(true)
+      setError(null)
+      try {
+        const list = await stockRepo.listInmobiliarias()
+        if (!cancelled) setInmobiliarias(list)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Error cargando inmobiliarias')
+          setInmobiliarias([INMOBILIARIA_IMAGINA])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void fetchInmobiliarias()
+    return () => { cancelled = true }
+  }, [])
+
+  return { inmobiliarias, loading, error }
+}
+
+// ─── Hook: Proyectos por inmobiliaria (solo activos en repositorio) ─
+export function useProyectosByInmobiliaria(inmobiliariaId: string | null) {
+  const [proyectos, setProyectos] = useState<Awaited<ReturnType<typeof stockRepo.listProyectosByInmobiliaria>>>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!inmobiliariaId) {
+      setProyectos([])
+      setError(null)
+      setLoading(false)
+      return
+    }
+    const id = inmobiliariaId
+    let cancelled = false
+    async function fetchProyectos() {
+      setLoading(true)
+      setError(null)
+      try {
+        const list = await stockRepo.listProyectosByInmobiliaria(id)
+        if (!cancelled) setProyectos(list)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Error cargando proyectos')
+          setProyectos(id === INMOBILIARIA_IMAGINA.id ? [PROYECTO_IMAGINA] : [])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void fetchProyectos()
+    return () => { cancelled = true }
+  }, [inmobiliariaId])
+
+  return { proyectos, loading, error }
+}
+
+// ─── Hook: listado plano de proyectos (compat) ───────────────────────
 export function useProyectos() {
   const [proyectos, setProyectos] = useState<Awaited<ReturnType<typeof stockRepo.listProyectos>>>([])
   const [loading, setLoading] = useState(true)

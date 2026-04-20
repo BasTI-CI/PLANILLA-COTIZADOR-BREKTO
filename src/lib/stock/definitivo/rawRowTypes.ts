@@ -15,6 +15,8 @@ export interface ProyectoRowDefinitivo {
   direccion?: string | null
   /** Si la inmobiliaria viene en join o columna plana */
   inmobiliaria_nombre?: string | null
+  id_inmobiliaria?: string | number | null
+  estado?: string | null
 }
 
 export interface UnidadRowDefinitivo {
