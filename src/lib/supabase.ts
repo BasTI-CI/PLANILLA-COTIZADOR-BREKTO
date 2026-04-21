@@ -2,10 +2,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Cliente oficial `@supabase/supabase-js`.
- * URL: `VITE_SUPABASE_URL`. Clave pública (anon / publishable): `VITE_SUPABASE_ANON_KEY` o
- * `VITE_SUPABASE_PUBLISHABLE_KEY` (mismo valor que muestra el panel).
  *
- * Sin URL/key la app puede arrancar, pero la ruta `/access` no podrá invocar la Edge Function de validación.
+ * En el panel de Supabase el proyecto expone `SUPABASE_URL` y `SUPABASE_ANON_KEY` (o “publishable”).
+ * Con Vite las variables deben ir con prefijo `VITE_` o no se inyectan en el bundle del navegador:
+ *   VITE_SUPABASE_URL  →  URL del proyecto
+ *   VITE_SUPABASE_ANON_KEY  o  VITE_SUPABASE_PUBLISHABLE_KEY  →  clave pública anónima
+ *
+ * Sin URL y clave, `/access` no puede invocar `validate-cotizador-access`.
  */
 let client: SupabaseClient | null = null
 

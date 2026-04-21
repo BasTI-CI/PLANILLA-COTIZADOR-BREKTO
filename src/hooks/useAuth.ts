@@ -7,7 +7,8 @@ import {
 import type { CotizadorUser } from '@/types/auth'
 
 /**
- * Estado del usuario del cotizador (solo datos post-validación en servidor; nunca el JWT).
+ * Usuario de sesión local (post `validate-cotizador-access`). Nunca el JWT.
+ * Reexportado en `@/lib/auth` para un solo punto de import.
  */
 export function useAuth() {
   const [user, setUser] = useState<CotizadorUser | null>(() =>
