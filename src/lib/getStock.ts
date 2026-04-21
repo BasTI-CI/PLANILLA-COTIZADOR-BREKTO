@@ -18,10 +18,31 @@ export interface GetStockParams {
   proyectoIdContext?: string
 }
 
-export interface GetStockResponse {
+/**
+ * Cuerpo JSON devuelto por la Edge Function (tras parsear la respuesta HTTP).
+ * Forma actual del backend: { success, data: StockItem[], count }.
+ */
+export interface GetStockEdgePayload {
   success?: boolean
+  /** Lista principal de unidades/stock */
+  data?: unknown[]
+  count?: number
+  /** Compat: respuestas antiguas que usaban `items` */
   items?: unknown[]
-  total?: number
+}
+
+/**
+ * Obtiene el array de filas desde el payload: prioriza `data`, luego `items`.
+ */
+export function extractStockRowsFromEdgePayload(payload: Record<string, unknown>): unknown[] {
+  if (Array.isArray(payload.data)) {
+    return payload.data
+  }
+  if (Array.isArray(payload.items)) {
+    console.info('[STOCK] usando payload.items (compat); el backend expone la lista en payload.data')
+    return payload.items
+  }
+  return []
 }
 
 function n(v: unknown, def = 0): number {
@@ -44,16 +65,87 @@ function b(v: unknown, def = true): boolean {
 }
 
 /**
+ * Elige el texto de “número de unidad” para UI y `numero`.
+ * Prioriza códigos cortos / numéricos; evita usar solo `codigo` largo tipo "Proyecto - Inmobiliaria"
+ * cuando exista otro campo con el depto (ej. 316).
+ */
+export function pickNumeroUnidadFromStockRow(raw: Record<string, unknown>, idFallback: string): string {
+  /** Prioridad: cualquier campo cuyo nombre sugiera número de depto y el valor sea solo dígitos. */
+  for (const [key, val] of Object.entries(raw)) {
+    if (!/num|nro|depto|dpto|unidad|torre|piso/i.test(key)) continue
+    if (/^codigo$/i.test(key)) continue
+    const t = s(val)
+    if (/^\d{2,6}$/.test(t)) return t
+  }
+
+  const keysOrdered: (keyof typeof raw | string)[] = [
+    'numero_departamento',
+    'nro_depto',
+    'numero_unidad',
+    'nro_unidad',
+    'depto',
+    'numero',
+    'unidad',
+    'nro',
+    'number',
+    'codigo_unidad',
+    'codigo',
+    'glosa',
+  ]
+  const candidates: string[] = []
+  for (const k of keysOrdered) {
+    const v = raw[k as string]
+    const t = s(v)
+    if (t) candidates.push(t)
+  }
+
+  for (const t of candidates) {
+    if (/^\d{1,6}$/.test(t)) return t
+  }
+  for (const t of candidates) {
+    if (/^[A-Za-z]?\d{1,5}$/.test(t) || /^\d{1,4}-[A-Za-z0-9]+$/.test(t) || /^[A-Za-z]-\d+$/.test(t)) {
+      return t
+    }
+  }
+  for (const t of candidates) {
+    if (t.includes(' - ') || t.includes(' – ') || t.includes(' — ')) {
+      const m = t.match(/(\d{2,5})\s*$/)
+      if (m) return m[1]
+      const nums = t.match(/\d{2,5}/g)
+      if (nums?.length) return nums[nums.length - 1]
+    }
+  }
+  for (const t of candidates) {
+    if (t) return t
+  }
+  return idFallback
+}
+
+function aplicarHintNumeroBusqueda(numero: string, hint: string | undefined): string {
+  const h = hint?.trim() ?? ''
+  if (!h || !/^\d{2,6}$/.test(h)) return numero
+  const n = numero.trim()
+  const plain = /^\d{2,6}$/.test(n) || /^[A-Za-z]?\d{1,5}$/i.test(n)
+  const labelLike = /-|–|—/.test(n) && /[A-Za-zÀ-ÿ]{2,}/.test(n)
+  if (!plain || labelLike) return h
+  return numero
+}
+
+/**
  * Normaliza un ítem devuelto por la Edge Function `get-stock` al modelo de la app.
+ * @param unidadBusquedaHint Texto de búsqueda por unidad en UI (ej. `316`): si el backend devuelve un `numero` tipo etiqueta "Proyecto - Inmobiliaria", se prefiere el hint.
  */
 export function mapStockItemToUnidadSupabase(
   raw: Record<string, unknown>,
-  proyectoIdFallback: string
+  proyectoIdFallback: string,
+  unidadBusquedaHint?: string
 ): UnidadSupabase | null {
-  const id = s(raw.id ?? raw.unidad_id ?? raw.id_unidad)
+  const idRaw = raw.id ?? raw.unidad_id ?? raw.id_unidad
+  const id = idRaw !== null && idRaw !== undefined && idRaw !== '' ? String(idRaw).trim() : ''
   if (!id) return null
 
-  const numero = s(raw.numero ?? raw.number ?? raw.nro ?? raw.codigo)
+  const base = pickNumeroUnidadFromStockRow(raw, id)
+  const numero = aplicarHintNumeroBusqueda(base, unidadBusquedaHint)
   return {
     id,
     proyecto_id: s(raw.proyecto_id ?? raw.proyectoId, proyectoIdFallback),
@@ -124,6 +216,8 @@ export async function getStock(params: GetStockParams): Promise<UnidadSupabase[]
     body,
   })
 
+  console.info('[STOCK] invoke resultado completo (SDK)', invokeResult)
+
   const { data, error } = invokeResult
   const response = 'response' in invokeResult ? invokeResult.response : undefined
 
@@ -142,31 +236,38 @@ export async function getStock(params: GetStockParams): Promise<UnidadSupabase[]
     throw new Error(msg)
   }
 
-  console.info('[STOCK] response completa (body parseado)', data)
+  // `data` aquí = cuerpo JSON de la Edge Function (equiv. a lo que en red es el body del 200).
+  console.info('[STOCK] response.data (cuerpo función) = invokeResult.data', data)
 
-  const payload = data as GetStockResponse | null
-  if (payload == null) {
+  const payload = data as GetStockEdgePayload | null
+  if (payload == null || typeof payload !== 'object') {
     throw new Error('Respuesta vacía de get-stock')
   }
   if (payload.success === false) {
     throw new Error('get-stock indicó success: false')
   }
 
-  const items = payload.items
-  if (!Array.isArray(items)) {
-    console.info('[STOCK] items no es array → 0 resultados')
-    return []
+  if (typeof payload.count === 'number') {
+    console.info('[STOCK] count (backend)', payload.count)
   }
 
+  const rawRows = extractStockRowsFromEdgePayload(payload as Record<string, unknown>)
+  console.info('[STOCK] filas extraídas (payload.data o payload.items)', rawRows.length, {
+    preview: rawRows.slice(0, 3),
+  })
+
   const proyectoIdFallback = params.proyectoIdContext?.trim() ?? ''
+  const hintUnidad = params.unidad?.trim()
   const out: UnidadSupabase[] = []
-  for (const item of items) {
+  for (const item of rawRows) {
     if (item == null || typeof item !== 'object') continue
     const row = item as Record<string, unknown>
-    const u = mapStockItemToUnidadSupabase(row, proyectoIdFallback)
+    const u = mapStockItemToUnidadSupabase(row, proyectoIdFallback, hintUnidad)
     if (u) out.push(u)
   }
 
-  console.info('[STOCK] cantidad de resultados mapeados', out.length)
+  console.info('[STOCK] array final mapeado a UnidadSupabase[]', out.length, {
+    preview: out.slice(0, 3),
+  })
   return out
 }

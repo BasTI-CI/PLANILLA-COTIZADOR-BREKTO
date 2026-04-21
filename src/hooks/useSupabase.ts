@@ -182,18 +182,22 @@ export function useStockUnidades(params: UseStockUnidadesParams) {
     }
 
     const idProyecto = proyectoId
-    const tip = tipologiaOpcional.trim()
+    const hayBusquedaUnidad = Boolean(debouncedUnidad.trim())
+    /** Con búsqueda por unidad, no se mezcla filtro de tipología (UI también lo desactiva). */
+    const tipologiaSoloSinBusquedaUnidad = hayBusquedaUnidad ? '' : tipologiaOpcional
+    const tip = tipologiaSoloSinBusquedaUnidad.trim()
     const tipPayload = tip || undefined
     let cancelled = false
 
     async function fetchLocal(): Promise<U> {
       const list = await stockRepo.listUnidadesByProyecto(idProyecto)
-      let next = filterUnidadesByTipologiaOpcional(list, tipologiaOpcional, catalogoTipologias)
+      let next = filterUnidadesByTipologiaOpcional(list, tipologiaSoloSinBusquedaUnidad, catalogoTipologias)
       next = filterUnidadesPorBusquedaNumero(next, debouncedUnidad)
       return next
     }
 
     async function run() {
+      setUnidades([])
       setLoading(true)
       setError(null)
       try {
@@ -202,7 +206,7 @@ export function useStockUnidades(params: UseStockUnidadesParams) {
             inmobiliaria: inm,
             proyecto: proy,
             unidad: debouncedUnidad || '(vacío → query general)',
-            tipologia: tipPayload ?? '(omitida)',
+            tipologia: hayBusquedaUnidad ? '(omitida: hay búsqueda por unidad)' : (tipPayload ?? '(omitida)'),
           })
           try {
             const list = await getStock({
@@ -213,19 +217,28 @@ export function useStockUnidades(params: UseStockUnidadesParams) {
               ...(debouncedUnidad && { unidad: debouncedUnidad }),
               ...(tipPayload && { tipologia: tipPayload }),
             })
-            if (!cancelled) setUnidades(list as U)
+            if (!cancelled) {
+              console.info('[STOCK] setState unidades ← getStock', { count: list.length })
+              setUnidades(list as U)
+            }
             return
           } catch (edgeErr) {
             console.error('[STOCK] get-stock falló; fallback repositorio local', edgeErr)
             if (cancelled) return
             const list = await fetchLocal()
-            if (!cancelled) setUnidades(list)
+            if (!cancelled) {
+              console.info('[STOCK] setState unidades ← repositorio local (fallback)', list.length)
+              setUnidades(list)
+            }
             return
           }
         }
         console.info('[STOCK] Supabase no configurado → solo repositorio local (sin invoke)')
         const list = await fetchLocal()
-        if (!cancelled) setUnidades(list)
+        if (!cancelled) {
+          console.info('[STOCK] setState unidades ← repositorio local', list.length)
+          setUnidades(list)
+        }
       } catch (err) {
         if (!cancelled) {
           setUnidades([])

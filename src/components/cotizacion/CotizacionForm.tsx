@@ -19,6 +19,33 @@ interface Props { cotizacionId: number }
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
 
+/** Tercer segmento: si el backend mandó texto tipo "Proyecto - Inmobiliaria" y el usuario buscó un número, mostrar ese número. */
+function displayNumeroLineaResultado(numero: string, busquedaUnidad?: string): string {
+  const h = busquedaUnidad?.trim() ?? ''
+  if (/^\d{2,6}$/.test(h)) {
+    const n = numero.trim()
+    const plain = /^\d{2,6}$/.test(n) || /^[A-Za-z]?\d{1,5}$/i.test(n)
+    const labelLike = /-|–|—/.test(n) && /[A-Za-zÀ-ÿ]{2,}/.test(n)
+    if (!plain || labelLike) return h
+  }
+  return numero.trim()
+}
+
+/** Línea del select de resultados: inmobiliaria — proyecto — unidad · … */
+function textoResultadoStock(
+  inmobiliaria: string,
+  proyecto: string,
+  u: { numero: string; tipologia: string; sup_total_m2: number; precio_lista_uf: number },
+  busquedaUnidad?: string
+): string {
+  const cab =
+    inmobiliaria.trim() && proyecto.trim()
+      ? `${inmobiliaria.trim()} — ${proyecto.trim()} — `
+      : ''
+  const num = displayNumeroLineaResultado(u.numero, busquedaUnidad)
+  return `${cab}${num} · ${u.tipologia} · ${u.sup_total_m2}m² · ${formatUF(u.precio_lista_uf)}`
+}
+
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
     <div
@@ -143,6 +170,13 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     setUnidadBusqueda('')
   }, [inmoSelId, proyectoSelId])
 
+  /** Búsqueda por unidad y tipología son excluyentes en UI y en payload a get-stock */
+  useEffect(() => {
+    if (!unidadBusqueda.trim()) return
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [unidadBusqueda, cotizacionId, setPropiedad])
+
   const handleModoSwitch = (manual: boolean) => {
     setModoManual(manual)
     setModoFuente(cotizacionId, manual ? 'manual' : 'supabase')
@@ -165,7 +199,48 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     cargarDesdeSupabase(cotizacionId, prop)
   }
 
+  /** Un solo resultado en stock: seleccionar y cargar la cotización sin paso manual. */
+  useEffect(() => {
+    if (!cot) return
+    if (modoManual || !proyectoSelId || buscandoUnidades || errorUnidades) return
+    if (unidades.length !== 1) return
+    const only = unidades[0]
+    const tipFiltro = tipologiaSel.trim()
+    if (tipFiltro && only.tipologia !== tipFiltro) return
+    if (unidadSelId === only.id) return
+
+    setUnidadSelId(only.id)
+    const proyecto = proyectos.find((pr) => pr.id === proyectoSelId)
+    if (!proyecto) return
+
+    const valid = validateUnidadSupabaseForMotor(only)
+    if (!valid.ok && import.meta.env.DEV) {
+      console.warn(
+        '[stock] Invariantes de unidad con avisos:',
+        valid.issues.map((i) => i.message).join(' | ')
+      )
+    }
+    const prop = unidadSupabaseToDatosPropiedad(proyecto, only)
+    cargarDesdeSupabase(cotizacionId, prop)
+  }, [
+    cot,
+    modoManual,
+    proyectoSelId,
+    buscandoUnidades,
+    errorUnidades,
+    unidades,
+    unidadSelId,
+    tipologiaSel,
+    proyectos,
+    cotizacionId,
+    cargarDesdeSupabase,
+  ])
+
   if (!cot) return null
+
+  const busquedaUnidadActiva = Boolean(unidadBusqueda.trim()) && !modoManual
+  /** Antecedentes en modo Supabase: más gris si además hay texto en búsqueda por unidad (sigue vigente el select de resultados). */
+  const opacidadAntecedentesSupabase = modoManual ? 1 : busquedaUnidadActiva ? 0.48 : 0.7
 
   const promos = cot.promociones ?? DEFAULT_PROMOCIONES
 
@@ -409,7 +484,7 @@ create policy "inmobiliarias_select_anon"
                   style={{ opacity: proyectoSelId && !modoManual ? 1 : 0.65 }}
                 />
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
-                  Búsqueda automática (sin botón). Sin texto = stock general vía get-stock. Tipología solo afinía resultados.
+                  Búsqueda automática. Sin texto = stock general. Si escribís unidad, el filtro de tipología se desactiva hasta que borres el campo.
                 </span>
                 {buscandoUnidades && proyectoSelId && !modoManual && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
@@ -419,12 +494,27 @@ create policy "inmobiliarias_select_anon"
                 )}
               </div>
 
-              <div className="form-group">
+              <div
+                className="form-group"
+                style={{
+                  opacity: busquedaUnidadActiva ? 0.58 : 1,
+                  pointerEvents: busquedaUnidadActiva ? 'none' : undefined,
+                }}
+              >
                 <label className="form-label">Tipología (opcional, afinar resultados)</label>
                 {!inmoSelId || !proyectoSelId ? (
                   <select className="form-select" disabled value="">
                     <option value="">— Primero escoja inmobiliaria y proyecto —</option>
                   </select>
+                ) : busquedaUnidadActiva ? (
+                  <>
+                    <select className="form-select" disabled value="">
+                      <option value="">No aplica mientras buscás por unidad arriba</option>
+                    </select>
+                    <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
+                      Borrá el texto en &quot;Buscar unidad&quot; para volver a filtrar por tipología.
+                    </span>
+                  </>
                 ) : loadingTipologias ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                     <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
@@ -477,7 +567,7 @@ create policy "inmobiliarias_select_anon"
                 <label className="form-label">Resultados · cargar en cotización</label>
                 <select
                   className="form-select"
-                  key={`${proyectoSelId}-${tipologiaSel}`}
+                  key={`${proyectoSelId}-${tipologiaSel}-${unidadBusqueda.trim()}`}
                   value={unidadSelId}
                   onChange={(e) => {
                     const v = e.target.value
@@ -489,7 +579,7 @@ create policy "inmobiliarias_select_anon"
                   <option value="">— Seleccionar unidad —</option>
                   {unidades.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.numero} · {u.tipologia} · {u.sup_total_m2}m² · {formatUF(u.precio_lista_uf)}
+                      {textoResultadoStock(inmobiliariaNombre, proyectoNombre, u, unidadBusqueda)}
                     </option>
                   ))}
                 </select>
@@ -582,7 +672,7 @@ create policy "inmobiliarias_select_anon"
                   readOnly={!modoManual}
                   onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
                   decimals={2}
-                  style={{ opacity: modoManual ? 1 : 0.7 }}
+                  style={{ opacity: opacidadAntecedentesSupabase }}
                 />
               ) : (
                 <input
@@ -591,7 +681,7 @@ create policy "inmobiliarias_select_anon"
                   value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
                   readOnly={!modoManual}
                   onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
-                  style={{ opacity: modoManual ? 1 : 0.7 }}
+                  style={{ opacity: opacidadAntecedentesSupabase }}
                 />
               )}
             </div>
@@ -647,7 +737,7 @@ create policy "inmobiliarias_select_anon"
                     precio_neto_uf: Math.round((lista - duf) * 100) / 100,
                   })
                 }}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -680,7 +770,7 @@ create policy "inmobiliarias_select_anon"
                 readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_max_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -719,7 +809,7 @@ create policy "inmobiliarias_select_anon"
                 readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_descuento_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
