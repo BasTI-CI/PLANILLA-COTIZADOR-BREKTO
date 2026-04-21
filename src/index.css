@@ -284,6 +284,7 @@ input[type='number'] {
 
 .card-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .card-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .page-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
 /* ── Form Elements ─────────────────────────────────────────────────────── */
@@ -706,7 +707,7 @@ tr.total-row td {
 @media (max-width: 900px) {
   .main-content { padding: 16px; }
   .graficos-grid { grid-template-columns: 1fr; }
-  .card-grid-2, .card-grid-3, .page-grid-2 { grid-template-columns: 1fr; }
+  .card-grid-2, .card-grid-3, .card-grid-4, .page-grid-2 { grid-template-columns: 1fr; }
   .flujo-params { grid-template-columns: 1fr 1fr; }
   .pdf-sections-grid { grid-template-columns: 1fr 1fr; }
   .module-tabs { overflow-x: auto; }

@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { useInmobiliarias, useProyectosByInmobiliaria, useUnidades } from '@/hooks/useSupabase'
+import { useInmobiliarias, useProyectosByInmobiliaria, useStockUnidades, useTipologias } from '@/hooks/useSupabase'
 import {
   calcularResultadosCotizacion,
   brutoMensualRentaCortaClp,
@@ -68,8 +68,68 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     setModoManual(cot?.modo_fuente === 'manual')
   }, [cot?.modo_fuente])
   const [proyectoSelId, setProyectoSelId] = useState<string>('')
+  const [unidadBusqueda, setUnidadBusqueda] = useState('')
+  const [tipologiaSel, setTipologiaSel] = useState('')
   const [unidadSelId, setUnidadSelId] = useState<string>('')
-  const { unidades, loading: loadingUnidades, error: errorUnidades } = useUnidades(proyectoSelId)
+
+  const inmobiliariaNombre = useMemo(
+    () => inmobiliarias.find((im) => im.id === inmoSelId)?.nombre?.trim() ?? '',
+    [inmobiliarias, inmoSelId]
+  )
+  const proyectoNombre = useMemo(
+    () => proyectos.find((pr) => pr.id === proyectoSelId)?.nombre?.trim() ?? '',
+    [proyectos, proyectoSelId]
+  )
+
+  const { tipologias, loading: loadingTipologias, error: errorTipologias } = useTipologias(
+    inmobiliariaNombre || null,
+    proyectoNombre || null
+  )
+
+  const {
+    unidades,
+    loading: loadingUnidades,
+    error: errorUnidades,
+    buscando: buscandoUnidades,
+  } = useStockUnidades({
+    proyectoId: proyectoSelId || null,
+    inmobiliariaNombre: inmobiliariaNombre || null,
+    proyectoNombre: proyectoNombre || null,
+    unidadBusqueda,
+    tipologiaOpcional: tipologiaSel,
+    catalogoTipologias: tipologias,
+    enabled: !modoManual,
+  })
+
+  const omitTipologiaClearOnMount = useRef(true)
+  useEffect(() => {
+    if (omitTipologiaClearOnMount.current) {
+      omitTipologiaClearOnMount.current = false
+      return
+    }
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [inmoSelId, proyectoSelId, cotizacionId, setPropiedad])
+
+  /** Sin catálogo o sin selección → no forzar coherencia unidad/tipología */
+  useEffect(() => {
+    if (!unidadSelId) return
+    const t = tipologiaSel.trim()
+    if (!t || tipologias.length === 0) return
+    const u = unidades.find((x) => x.id === unidadSelId)
+    if (u && u.tipologia !== t) {
+      setUnidadSelId('')
+    }
+  }, [tipologiaSel, tipologias.length, unidades, unidadSelId])
+
+  /** Respuesta vacía o error: quitar selección de tipología para no filtrar stock */
+  useEffect(() => {
+    if (loadingTipologias) return
+    if (tipologias.length > 0) return
+    if (!tipologiaSel) return
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [loadingTipologias, tipologias, tipologiaSel, cotizacionId, setPropiedad])
 
   useEffect(() => {
     setProyectoSelId('')
@@ -78,6 +138,10 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   useEffect(() => {
     setUnidadSelId('')
   }, [proyectoSelId])
+
+  useEffect(() => {
+    setUnidadBusqueda('')
+  }, [inmoSelId, proyectoSelId])
 
   const handleModoSwitch = (manual: boolean) => {
     setModoManual(manual)
@@ -278,63 +342,149 @@ create policy "inmobiliarias_select_anon"
                 </pre>
               </>
             )}
-            <div className="card-grid-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="card-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Inmobiliaria</label>
+                  {loadingInmos ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                      <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                    </div>
+                  ) : (
+                    <select
+                      className="form-select"
+                      value={inmoSelId}
+                      onChange={(e) => setInmoSelId(e.target.value)}
+                    >
+                      <option value="">— Seleccionar inmobiliaria —</option>
+                      {inmobiliarias.map((im) => (
+                        <option key={im.id} value={im.id}>
+                          {im.nombre}{im.codigo ? ` · ${im.codigo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Proyecto</label>
+                  {!inmoSelId ? (
+                    <select className="form-select" disabled value="">
+                      <option value="">— Primero escoja inmobiliaria —</option>
+                    </select>
+                  ) : loadingProys ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                      <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                    </div>
+                  ) : (
+                    <select className="form-select" value={proyectoSelId}
+                      onChange={(e) => setProyectoSelId(e.target.value)}>
+                      <option value="">— Seleccionar proyecto —</option>
+                      {proyectos.map((pr) => (
+                        <option key={pr.id} value={pr.id}>
+                          {pr.nombre}
+                          {(pr.comuna || pr.inmobiliaria) && ` · ${pr.comuna || pr.inmobiliaria}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Inmobiliaria</label>
-                {loadingInmos ? (
+                <label className="form-label">Buscar unidad (número o código)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={unidadBusqueda}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setUnidadBusqueda(v)
+                    if (import.meta.env.DEV) {
+                      console.info('[cotizador] input unidad →', v)
+                    }
+                  }}
+                  disabled={!proyectoSelId || modoManual}
+                  placeholder="Ej. 1205, A-301"
+                  autoComplete="off"
+                  style={{ opacity: proyectoSelId && !modoManual ? 1 : 0.65 }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
+                  Búsqueda automática (sin botón). Sin texto = stock general vía get-stock. Tipología solo afinía resultados.
+                </span>
+                {buscandoUnidades && proyectoSelId && !modoManual && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <div className="loading-spinner" />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Buscando unidades...</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Tipología (opcional, afinar resultados)</label>
+                {!inmoSelId || !proyectoSelId ? (
+                  <select className="form-select" disabled value="">
+                    <option value="">— Primero escoja inmobiliaria y proyecto —</option>
+                  </select>
+                ) : loadingTipologias ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                     <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
                   </div>
+                ) : errorTipologias ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      color: 'var(--color-text-muted)',
+                      margin: 0,
+                      padding: '10px 0',
+                    }}
+                  >
+                    {errorTipologias}. Podés buscar unidad sin filtrar por tipología.
+                  </p>
+                ) : tipologias.length === 0 ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      color: 'var(--color-text-muted)',
+                      margin: 0,
+                      padding: '10px 0',
+                    }}
+                  >
+                    Sin tipologías disponibles. La búsqueda por unidad sigue activa.
+                  </p>
                 ) : (
                   <select
                     className="form-select"
-                    value={inmoSelId}
-                    onChange={(e) => setInmoSelId(e.target.value)}
+                    value={tipologiaSel}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setTipologiaSel(v)
+                      setPropiedad(cotizacionId, { unidad_tipologia: v })
+                    }}
                   >
-                    <option value="">— Seleccionar inmobiliaria —</option>
-                    {inmobiliarias.map((im) => (
-                      <option key={im.id} value={im.id}>
-                        {im.nombre}{im.codigo ? ` · ${im.codigo}` : ''}
+                    <option value="">Todas (sin filtrar por tipología)</option>
+                    {tipologias.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
+
               <div className="form-group">
-                <label className="form-label">Proyecto</label>
-                {!inmoSelId ? (
-                  <select className="form-select" disabled value="">
-                    <option value="">— Primero elegí inmobiliaria —</option>
-                  </select>
-                ) : loadingProys ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                    <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
-                  </div>
-                ) : (
-                  <select className="form-select" value={proyectoSelId}
-                    onChange={(e) => setProyectoSelId(e.target.value)}>
-                    <option value="">— Seleccionar proyecto —</option>
-                    {proyectos.map((pr) => (
-                      <option key={pr.id} value={pr.id}>
-                        {pr.nombre}
-                        {(pr.comuna || pr.inmobiliaria) && ` · ${pr.comuna || pr.inmobiliaria}`}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="form-group">
-                <label className="form-label">Unidad / Departamento</label>
+                <label className="form-label">Resultados · cargar en cotización</label>
                 <select
                   className="form-select"
-                  key={proyectoSelId}
+                  key={`${proyectoSelId}-${tipologiaSel}`}
                   value={unidadSelId}
                   onChange={(e) => {
                     const v = e.target.value
                     setUnidadSelId(v)
                     if (v) handleCargarUnidad(v)
                   }}
-                  disabled={!proyectoSelId || loadingUnidades}
+                  disabled={!proyectoSelId || modoManual || buscandoUnidades}
                 >
                   <option value="">— Seleccionar unidad —</option>
                   {unidades.map((u) => (
@@ -348,9 +498,9 @@ create policy "inmobiliarias_select_anon"
                     No se pudieron cargar unidades: {errorUnidades}
                   </p>
                 )}
-                {isSupabaseConfigured() && proyectoSelId && !loadingUnidades && !errorUnidades && unidades.length === 0 && (
+                {proyectoSelId && !modoManual && !buscandoUnidades && !errorUnidades && unidades.length === 0 && (
                   <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6, marginBottom: 0 }}>
-                    Aún no hay unidades de stock enlazadas a este proyecto en Supabase. Cuando exista la tabla de unidades y el mapeo, aparecerán aquí. Mientras tanto podés usar modo <strong>Manual</strong> para ingresar datos.
+                    No hay unidades que coincidan. Revisá el número, dejá el campo vacío para listado general o verificá la consola (logs <code style={{ fontSize: 10 }}>[STOCK]</code>).
                   </p>
                 )}
               </div>

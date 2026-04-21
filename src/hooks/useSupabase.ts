@@ -3,10 +3,38 @@
  * Mapeo BD → motor: `src/lib/stock` (reglas de cálculo: `src/lib/engines`).
  */
 import { useState, useEffect } from 'react'
-import { createDefaultStockRepository } from '@/lib/stock'
+import {
+  createDefaultStockRepository,
+  filterUnidadesByTipologiaOpcional,
+  filterUnidadesPorBusquedaNumero,
+} from '@/lib/stock'
 import { INMOBILIARIA_IMAGINA, PROYECTO_IMAGINA } from '@/lib/stock/imaginaPruebaRepository'
+import { getTipologias } from '@/lib/tipologias'
+import { getStock } from '@/lib/getStock'
+import { isSupabaseConfigured } from '@/lib/supabase'
 
 const stockRepo = createDefaultStockRepository()
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delayMs)
+    return () => window.clearTimeout(t)
+  }, [value, delayMs])
+  return debounced
+}
+
+export interface UseStockUnidadesParams {
+  proyectoId: string | null
+  inmobiliariaNombre: string | null
+  proyectoNombre: string | null
+  /** Texto libre de búsqueda por número/código de unidad (principal). */
+  unidadBusqueda: string
+  tipologiaOpcional: string
+  catalogoTipologias: readonly string[]
+  /** Si es false, no ejecuta consultas (p. ej. modo manual de cotización). */
+  enabled?: boolean
+}
 
 // ─── Hook: Inmobiliarias (catálogo activo) ──────────────────────────
 export function useInmobiliarias() {
@@ -105,25 +133,98 @@ export function useProyectos() {
   return { proyectos, loading, error }
 }
 
-// ─── Hook: Unidades por proyecto ───────────────────────────────────
-export function useUnidades(proyectoId: string | null) {
-  const [unidades, setUnidades] = useState<Awaited<ReturnType<typeof stockRepo.listUnidadesByProyecto>>>([])
+// ─── Hook: Unidades (get-stock + búsqueda por unidad; fallback repositorio) ─
+export function useStockUnidades(params: UseStockUnidadesParams) {
+  type U = Awaited<ReturnType<typeof stockRepo.listUnidadesByProyecto>>
+  const [unidades, setUnidades] = useState<U>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const {
+    proyectoId,
+    inmobiliariaNombre,
+    proyectoNombre,
+    unidadBusqueda,
+    tipologiaOpcional,
+    catalogoTipologias,
+    enabled = true,
+  } = params
+
+  const debouncedUnidad = useDebouncedValue(unidadBusqueda.trim(), 360)
+  const debouncePendiente =
+    enabled &&
+    Boolean(proyectoId && (inmobiliariaNombre?.trim() ?? '') && (proyectoNombre?.trim() ?? '')) &&
+    unidadBusqueda.trim() !== debouncedUnidad
+
+  const catalogoTipologiasKey = catalogoTipologias.join('|')
+
   useEffect(() => {
-    if (!proyectoId) {
+    if (!enabled) {
+      console.info('[STOCK] skip consulta: enabled=false (p. ej. modo manual)')
       setUnidades([])
       setError(null)
+      setLoading(false)
       return
     }
+
+    const inm = inmobiliariaNombre?.trim() ?? ''
+    const proy = proyectoNombre?.trim() ?? ''
+    if (!proyectoId || !inm || !proy) {
+      console.info('[STOCK] skip consulta: falta proyecto seleccionado o nombres inmobiliaria/proyecto', {
+        proyectoId,
+        inm,
+        proy,
+      })
+      setUnidades([])
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     const idProyecto = proyectoId
+    const tip = tipologiaOpcional.trim()
+    const tipPayload = tip || undefined
     let cancelled = false
-    async function fetchUnidades() {
+
+    async function fetchLocal(): Promise<U> {
+      const list = await stockRepo.listUnidadesByProyecto(idProyecto)
+      let next = filterUnidadesByTipologiaOpcional(list, tipologiaOpcional, catalogoTipologias)
+      next = filterUnidadesPorBusquedaNumero(next, debouncedUnidad)
+      return next
+    }
+
+    async function run() {
       setLoading(true)
       setError(null)
       try {
-        const list = await stockRepo.listUnidadesByProyecto(idProyecto)
+        if (isSupabaseConfigured()) {
+          console.info('[STOCK] disparo tras debounce → getStock (POST via SDK)', {
+            inmobiliaria: inm,
+            proyecto: proy,
+            unidad: debouncedUnidad || '(vacío → query general)',
+            tipologia: tipPayload ?? '(omitida)',
+          })
+          try {
+            const list = await getStock({
+              inmobiliaria: inm,
+              proyecto: proy,
+              proyectoIdContext: idProyecto,
+              limit: 200,
+              ...(debouncedUnidad && { unidad: debouncedUnidad }),
+              ...(tipPayload && { tipologia: tipPayload }),
+            })
+            if (!cancelled) setUnidades(list as U)
+            return
+          } catch (edgeErr) {
+            console.error('[STOCK] get-stock falló; fallback repositorio local', edgeErr)
+            if (cancelled) return
+            const list = await fetchLocal()
+            if (!cancelled) setUnidades(list)
+            return
+          }
+        }
+        console.info('[STOCK] Supabase no configurado → solo repositorio local (sin invoke)')
+        const list = await fetchLocal()
         if (!cancelled) setUnidades(list)
       } catch (err) {
         if (!cancelled) {
@@ -134,13 +235,74 @@ export function useUnidades(proyectoId: string | null) {
         if (!cancelled) setLoading(false)
       }
     }
-    void fetchUnidades()
-    return () => { cancelled = true }
-  }, [proyectoId])
 
-  return { unidades, loading, error }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    enabled,
+    proyectoId,
+    inmobiliariaNombre,
+    proyectoNombre,
+    debouncedUnidad,
+    tipologiaOpcional,
+    catalogoTipologiasKey,
+  ])
+
+  const buscando =
+    enabled && (loading || debouncePendiente) && Boolean(proyectoId && (inmobiliariaNombre?.trim() ?? '') && (proyectoNombre?.trim() ?? ''))
+
+  return { unidades, loading, error, debouncePendiente, buscando }
 }
 
+// ─── Hook: Tipologías (Edge Function `get-tipologias`) ───────────────
+export function useTipologias(inmobiliaria: string | null, proyecto: string | null) {
+  const [tipologias, setTipologias] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const inm = inmobiliaria?.trim() ?? ''
+    const proy = proyecto?.trim() ?? ''
+    if (!inm || !proy) {
+      setTipologias([])
+      setError(null)
+      setLoading(false)
+      return
+    }
+
+    if (!isSupabaseConfigured()) {
+      setTipologias([])
+      setError(null)
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    async function fetchTipologias() {
+      setLoading(true)
+      setError(null)
+      try {
+        const list = await getTipologias(inm, proy)
+        if (!cancelled) setTipologias(list)
+      } catch {
+        if (!cancelled) {
+          setTipologias([])
+          setError('No se pudieron cargar las tipologías')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void fetchTipologias()
+    return () => {
+      cancelled = true
+    }
+  }, [inmobiliaria, proyecto])
+
+  return { tipologias, loading, error }
+}
 
 // ─── Hook: UF del día (API Mindicador.cl) ──────────────────────────
 const UF_FALLBACK = 39_836

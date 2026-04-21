@@ -14,6 +14,14 @@ function stockBackendMode(): StockBackendMode {
 }
 
 /**
+ * Si es true, el listado de unidades puede resolverse vía Edge Function `get-stock`
+ * (Supabase configurado y backend distinto del mock Imagina).
+ */
+export function usesEdgeStockQuery(): boolean {
+  return isSupabaseConfigured() && stockBackendMode() !== 'imagina'
+}
+
+/**
  * - Sin `VITE_SUPABASE_*` o `imagina`: demo `Stock_Imagina_Prueba` / mock embebido.
  * - `definitivo`: tablas en `src/lib/stock/definitivo/schema.ts` (proyectos + unidades).
  * - Por defecto con Supabase configurado: tablas `public.proyectos` / `public.inmobiliarias`.
