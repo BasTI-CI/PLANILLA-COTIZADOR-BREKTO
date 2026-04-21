@@ -4,7 +4,7 @@
  * cuando exista el esquema multi-inmobiliaria / multi-proyecto.
  */
 import { getSupabase } from '@/lib/supabase'
-import type { ProyectoSupabase, UnidadSupabase } from '@/types'
+import type { InmobiliariaSupabase, ProyectoSupabase, UnidadSupabase } from '@/types'
 import type { StockRepository } from './types'
 
 // ─── Fila tal como viene de PostgREST (tabla de ejemplo) ──────────
@@ -27,6 +27,13 @@ interface StockRow {
 
 const TABLA = 'Stock_Imagina_Prueba'
 
+/** Inmobiliaria demo (selector en cascada). */
+export const INMOBILIARIA_IMAGINA: InmobiliariaSupabase = {
+  id: 'imagina-inmo',
+  codigo: 'IMG',
+  nombre: 'Imagina Inmobiliaria',
+}
+
 /** Proyecto sintético: la tabla de prueba no tiene dimensión proyecto. */
 export const PROYECTO_IMAGINA: ProyectoSupabase = {
   id: 'imagina',
@@ -35,6 +42,8 @@ export const PROYECTO_IMAGINA: ProyectoSupabase = {
   barrio: '',
   direccion: '',
   inmobiliaria: 'Imagina Inmobiliaria',
+  id_inmobiliaria: INMOBILIARIA_IMAGINA.id,
+  estado: 'activo',
 }
 
 const MOCK_PROYECTOS: ProyectoSupabase[] = [PROYECTO_IMAGINA]
@@ -135,6 +144,19 @@ export function mapStockRowToUnidad(row: StockRow): UnidadSupabase {
 }
 
 export class ImaginaPruebaStockRepository implements StockRepository {
+  async listInmobiliarias(): Promise<InmobiliariaSupabase[]> {
+    return [INMOBILIARIA_IMAGINA]
+  }
+
+  async listProyectosByInmobiliaria(inmobiliariaId: string): Promise<ProyectoSupabase[]> {
+    if (inmobiliariaId !== INMOBILIARIA_IMAGINA.id) return []
+    const supabase = getSupabase()
+    if (!supabase) return [...MOCK_PROYECTOS]
+    const { error } = await supabase.from(TABLA).select('id').limit(1)
+    if (error) throw new Error(error.message)
+    return [PROYECTO_IMAGINA]
+  }
+
   /**
    * Sin cliente: mock. Con cliente: ping a la tabla; error de red/esquema → lanza
    * (el hook muestra mensaje y cae a mock).

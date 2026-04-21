@@ -7,6 +7,11 @@ import AccessPage from '@/pages/AccessPage'
 import UnauthorizedPage from '@/pages/UnauthorizedPage'
 import './index.css'
 
+/**
+ * Rutas públicas: `/access` (SSO con token en query), `/unauthorized`.
+ * El cotizador (`/`) exige `localStorage` `cotizador_user` y sesión no vencida; si no, redirección a `/access`.
+ * El JWT nunca se guarda; solo el objeto `user` devuelto por la Edge Function.
+ */
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

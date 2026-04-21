@@ -242,6 +242,12 @@ export interface AppState {
 // PROVISIONAL (ver variables_calculo.md — capa datos vs motor); sustituir cuando
 // exista el esquema definitivo multi-inmobiliaria / multi-proyecto.
 // ------------------------------------------------------------------
+export interface InmobiliariaSupabase {
+  id: string
+  codigo: string
+  nombre: string
+}
+
 export interface ProyectoSupabase {
   id: string
   nombre: string
@@ -250,6 +256,10 @@ export interface ProyectoSupabase {
   direccion: string
   inmobiliaria?: string
   imagen_url?: string
+  /** FK hacia catálogo inmobiliarias (string para coincidir con selects). */
+  id_inmobiliaria?: string
+  /** Copia del `estado` en BD si aplica (p. ej. para leyendas). */
+  estado?: string
 }
 
 export interface UnidadSupabase {

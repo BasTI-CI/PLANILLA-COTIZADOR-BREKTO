@@ -1,4 +1,4 @@
-import type { ProyectoSupabase, UnidadSupabase } from '@/types'
+import type { InmobiliariaSupabase, ProyectoSupabase, UnidadSupabase } from '@/types'
 
 /**
  * Contrato para orígenes de stock dinámicos (Supabase u otro backend).
@@ -6,8 +6,14 @@ import type { ProyectoSupabase, UnidadSupabase } from '@/types'
  * proyectos/unidades y entrega filas ya normalizadas a `UnidadSupabase`.
  */
 export interface StockRepository {
-  /** Proyectos visibles para el selector (orden estable recomendado). */
+  /** Catálogo plano de proyectos (p. ej. compat o listados). */
   listProyectos(): Promise<ProyectoSupabase[]>
+
+  /** Inmobiliarias visibles (p. ej. solo activas y con proyectos activos). */
+  listInmobiliarias(): Promise<InmobiliariaSupabase[]>
+
+  /** Proyectos activos de esa inmobiliaria. */
+  listProyectosByInmobiliaria(inmobiliariaId: string): Promise<ProyectoSupabase[]>
 
   /** Unidades de stock del proyecto; `proyectoId` vacío puede devolver []. */
   listUnidadesByProyecto(proyectoId: string): Promise<UnidadSupabase[]>

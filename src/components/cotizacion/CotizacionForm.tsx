@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { useProyectos, useUnidades } from '@/hooks/useSupabase'
+import { useInmobiliarias, useProyectosByInmobiliaria, useStockUnidades, useTipologias } from '@/hooks/useSupabase'
 import {
   calcularResultadosCotizacion,
   brutoMensualRentaCortaClp,
@@ -18,6 +18,33 @@ interface Props { cotizacionId: number }
 
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
+
+/** Tercer segmento: si el backend mandó texto tipo "Proyecto - Inmobiliaria" y el usuario buscó un número, mostrar ese número. */
+function displayNumeroLineaResultado(numero: string, busquedaUnidad?: string): string {
+  const h = busquedaUnidad?.trim() ?? ''
+  if (/^\d{2,6}$/.test(h)) {
+    const n = numero.trim()
+    const plain = /^\d{2,6}$/.test(n) || /^[A-Za-z]?\d{1,5}$/i.test(n)
+    const labelLike = /-|–|—/.test(n) && /[A-Za-zÀ-ÿ]{2,}/.test(n)
+    if (!plain || labelLike) return h
+  }
+  return numero.trim()
+}
+
+/** Línea del select de resultados: inmobiliaria — proyecto — unidad · … */
+function textoResultadoStock(
+  inmobiliaria: string,
+  proyecto: string,
+  u: { numero: string; tipologia: string; sup_total_m2: number; precio_lista_uf: number },
+  busquedaUnidad?: string
+): string {
+  const cab =
+    inmobiliaria.trim() && proyecto.trim()
+      ? `${inmobiliaria.trim()} — ${proyecto.trim()} — `
+      : ''
+  const num = displayNumeroLineaResultado(u.numero, busquedaUnidad)
+  return `${cab}${num} · ${u.tipologia} · ${u.sup_total_m2}m² · ${formatUF(u.precio_lista_uf)}`
+}
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
@@ -60,14 +87,95 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const uf = global.uf_valor_clp
 
   const [modoManual, setModoManual] = useState(cot?.modo_fuente === 'manual')
-  const { proyectos, loading: loadingProys } = useProyectos()
+  const { inmobiliarias, loading: loadingInmos, error: errorInmobiliarias } = useInmobiliarias()
+  const [inmoSelId, setInmoSelId] = useState<string>('')
+  const { proyectos, loading: loadingProys, error: errorProyectos } = useProyectosByInmobiliaria(inmoSelId || null)
+
+  useEffect(() => {
+    setModoManual(cot?.modo_fuente === 'manual')
+  }, [cot?.modo_fuente])
   const [proyectoSelId, setProyectoSelId] = useState<string>('')
+  const [unidadBusqueda, setUnidadBusqueda] = useState('')
+  const [tipologiaSel, setTipologiaSel] = useState('')
   const [unidadSelId, setUnidadSelId] = useState<string>('')
-  const { unidades, loading: loadingUnidades, error: errorUnidades } = useUnidades(proyectoSelId)
+
+  const inmobiliariaNombre = useMemo(
+    () => inmobiliarias.find((im) => im.id === inmoSelId)?.nombre?.trim() ?? '',
+    [inmobiliarias, inmoSelId]
+  )
+  const proyectoNombre = useMemo(
+    () => proyectos.find((pr) => pr.id === proyectoSelId)?.nombre?.trim() ?? '',
+    [proyectos, proyectoSelId]
+  )
+
+  const { tipologias, loading: loadingTipologias, error: errorTipologias } = useTipologias(
+    inmobiliariaNombre || null,
+    proyectoNombre || null
+  )
+
+  const {
+    unidades,
+    loading: loadingUnidades,
+    error: errorUnidades,
+    buscando: buscandoUnidades,
+  } = useStockUnidades({
+    proyectoId: proyectoSelId || null,
+    inmobiliariaNombre: inmobiliariaNombre || null,
+    proyectoNombre: proyectoNombre || null,
+    unidadBusqueda,
+    tipologiaOpcional: tipologiaSel,
+    catalogoTipologias: tipologias,
+    enabled: !modoManual,
+  })
+
+  const omitTipologiaClearOnMount = useRef(true)
+  useEffect(() => {
+    if (omitTipologiaClearOnMount.current) {
+      omitTipologiaClearOnMount.current = false
+      return
+    }
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [inmoSelId, proyectoSelId, cotizacionId, setPropiedad])
+
+  /** Sin catálogo o sin selección → no forzar coherencia unidad/tipología */
+  useEffect(() => {
+    if (!unidadSelId) return
+    const t = tipologiaSel.trim()
+    if (!t || tipologias.length === 0) return
+    const u = unidades.find((x) => x.id === unidadSelId)
+    if (u && u.tipologia !== t) {
+      setUnidadSelId('')
+    }
+  }, [tipologiaSel, tipologias.length, unidades, unidadSelId])
+
+  /** Respuesta vacía o error: quitar selección de tipología para no filtrar stock */
+  useEffect(() => {
+    if (loadingTipologias) return
+    if (tipologias.length > 0) return
+    if (!tipologiaSel) return
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [loadingTipologias, tipologias, tipologiaSel, cotizacionId, setPropiedad])
+
+  useEffect(() => {
+    setProyectoSelId('')
+  }, [inmoSelId])
 
   useEffect(() => {
     setUnidadSelId('')
   }, [proyectoSelId])
+
+  useEffect(() => {
+    setUnidadBusqueda('')
+  }, [inmoSelId, proyectoSelId])
+
+  /** Búsqueda por unidad y tipología son excluyentes en UI y en payload a get-stock */
+  useEffect(() => {
+    if (!unidadBusqueda.trim()) return
+    setTipologiaSel('')
+    setPropiedad(cotizacionId, { unidad_tipologia: '' })
+  }, [unidadBusqueda, cotizacionId, setPropiedad])
 
   const handleModoSwitch = (manual: boolean) => {
     setModoManual(manual)
@@ -91,7 +199,48 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     cargarDesdeSupabase(cotizacionId, prop)
   }
 
+  /** Un solo resultado en stock: seleccionar y cargar la cotización sin paso manual. */
+  useEffect(() => {
+    if (!cot) return
+    if (modoManual || !proyectoSelId || buscandoUnidades || errorUnidades) return
+    if (unidades.length !== 1) return
+    const only = unidades[0]
+    const tipFiltro = tipologiaSel.trim()
+    if (tipFiltro && only.tipologia !== tipFiltro) return
+    if (unidadSelId === only.id) return
+
+    setUnidadSelId(only.id)
+    const proyecto = proyectos.find((pr) => pr.id === proyectoSelId)
+    if (!proyecto) return
+
+    const valid = validateUnidadSupabaseForMotor(only)
+    if (!valid.ok && import.meta.env.DEV) {
+      console.warn(
+        '[stock] Invariantes de unidad con avisos:',
+        valid.issues.map((i) => i.message).join(' | ')
+      )
+    }
+    const prop = unidadSupabaseToDatosPropiedad(proyecto, only)
+    cargarDesdeSupabase(cotizacionId, prop)
+  }, [
+    cot,
+    modoManual,
+    proyectoSelId,
+    buscandoUnidades,
+    errorUnidades,
+    unidades,
+    unidadSelId,
+    tipologiaSel,
+    proyectos,
+    cotizacionId,
+    cargarDesdeSupabase,
+  ])
+
   if (!cot) return null
+
+  const busquedaUnidadActiva = Boolean(unidadBusqueda.trim()) && !modoManual
+  /** Antecedentes en modo Supabase: más gris si además hay texto en búsqueda por unidad (sigue vigente el select de resultados). */
+  const opacidadAntecedentesSupabase = modoManual ? 1 : busquedaUnidadActiva ? 0.48 : 0.7
 
   const promos = cot.promociones ?? DEFAULT_PROMOCIONES
 
@@ -198,46 +347,239 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   border: '1px solid rgba(245, 158, 11, 0.35)',
                 }}
               >
-                <strong>Modo demostración:</strong> no hay variables <code style={{ fontSize: 11 }}>VITE_SUPABASE_*</code> en{' '}
-                <code style={{ fontSize: 11 }}>.env.local</code>. El desplegable de unidades usa{' '}
-                <strong>stock de prueba Imagina</strong> embebido en la app (misma forma que la tabla{' '}
-                <code style={{ fontSize: 11 }}>Stock_Imagina_Prueba</code>). Con Supabase configurado se listan las filas reales del proyecto.
+                <strong>Modo demostración:</strong> no hay <code style={{ fontSize: 11 }}>VITE_SUPABASE_URL</code> y clave pública (
+                <code style={{ fontSize: 11 }}>VITE_SUPABASE_ANON_KEY</code> o{' '}
+                <code style={{ fontSize: 11 }}>VITE_SUPABASE_PUBLISHABLE_KEY</code>) en{' '}
+                <code style={{ fontSize: 11 }}>.env</code>. El desplegable usa{' '}
+                <strong>stock de prueba Imagina</strong> embebido. Con Supabase configurado se cargan proyectos desde la base de datos.
               </p>
             )}
-            <div className="card-grid-2">
+            {(errorInmobiliarias || errorProyectos) && (
+              <p
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  color: 'var(--color-error)',
+                  margin: '0 0 12px',
+                  padding: '10px 12px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: 8,
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                }}
+              >
+                {errorInmobiliarias && <>Inmobiliarias: {errorInmobiliarias}. </>}
+                {errorProyectos && <>Proyectos: {errorProyectos}</>}
+              </p>
+            )}
+            {isSupabaseConfigured() && !loadingInmos && !errorInmobiliarias && inmobiliarias.length === 0 && (
+              <>
+                <p
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: '#f59e0b',
+                    margin: '0 0 8px',
+                    padding: '10px 12px',
+                    background: 'rgba(245, 158, 11, 0.12)',
+                    borderRadius: 8,
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                  }}
+                >
+                  <strong>La consulta devolvió 0 inmobiliarias</strong> con la clave del navegador (rol{' '}
+                  <code style={{ fontSize: 11 }}>anon</code>). En el SQL Editor ves filas porque ese rol suele ser{' '}
+                  <code style={{ fontSize: 11 }}>postgres</code>, que no está sujeto a RLS como el cliente. Si RLS está
+                  activo sin política para <code style={{ fontSize: 11 }}>anon</code>, PostgREST devuelve lista vacía. En{' '}
+                  <strong>Authentication → Policies</strong> o SQL, permití SELECT para anon (ejemplo abajo; si ya hay
+                  políticas, adaptá o eliminá duplicados).
+                </p>
+                <pre
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                    margin: '0 0 12px',
+                    padding: '12px 14px',
+                    background: 'rgba(0,0,0,0.25)',
+                    borderRadius: 8,
+                    overflow: 'auto',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+{`alter table public.proyectos enable row level security;
+alter table public.inmobiliarias enable row level security;
+
+drop policy if exists "proyectos_select_anon" on public.proyectos;
+create policy "proyectos_select_anon"
+  on public.proyectos for select to anon using (true);
+
+drop policy if exists "inmobiliarias_select_anon" on public.inmobiliarias;
+create policy "inmobiliarias_select_anon"
+  on public.inmobiliarias for select to anon using (true);`}
+                </pre>
+              </>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="card-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Inmobiliaria</label>
+                  {loadingInmos ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                      <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                    </div>
+                  ) : (
+                    <select
+                      className="form-select"
+                      value={inmoSelId}
+                      onChange={(e) => setInmoSelId(e.target.value)}
+                    >
+                      <option value="">— Seleccionar inmobiliaria —</option>
+                      {inmobiliarias.map((im) => (
+                        <option key={im.id} value={im.id}>
+                          {im.nombre}{im.codigo ? ` · ${im.codigo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Proyecto</label>
+                  {!inmoSelId ? (
+                    <select className="form-select" disabled value="">
+                      <option value="">— Primero escoja inmobiliaria —</option>
+                    </select>
+                  ) : loadingProys ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                      <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
+                    </div>
+                  ) : (
+                    <select className="form-select" value={proyectoSelId}
+                      onChange={(e) => setProyectoSelId(e.target.value)}>
+                      <option value="">— Seleccionar proyecto —</option>
+                      {proyectos.map((pr) => (
+                        <option key={pr.id} value={pr.id}>
+                          {pr.nombre}
+                          {(pr.comuna || pr.inmobiliaria) && ` · ${pr.comuna || pr.inmobiliaria}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Proyecto</label>
-                {loadingProys ? (
+                <label className="form-label">Buscar unidad (número o código)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={unidadBusqueda}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setUnidadBusqueda(v)
+                    if (import.meta.env.DEV) {
+                      console.info('[cotizador] input unidad →', v)
+                    }
+                  }}
+                  disabled={!proyectoSelId || modoManual}
+                  placeholder="Ej. 1205, A-301"
+                  autoComplete="off"
+                  style={{ opacity: proyectoSelId && !modoManual ? 1 : 0.65 }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
+                  Búsqueda automática. Sin texto = stock general. Si escribís unidad, el filtro de tipología se desactiva hasta que borres el campo.
+                </span>
+                {buscandoUnidades && proyectoSelId && !modoManual && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <div className="loading-spinner" />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Buscando unidades...</span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="form-group"
+                style={{
+                  opacity: busquedaUnidadActiva ? 0.58 : 1,
+                  pointerEvents: busquedaUnidadActiva ? 'none' : undefined,
+                }}
+              >
+                <label className="form-label">Tipología (opcional, afinar resultados)</label>
+                {!inmoSelId || !proyectoSelId ? (
+                  <select className="form-select" disabled value="">
+                    <option value="">— Primero escoja inmobiliaria y proyecto —</option>
+                  </select>
+                ) : busquedaUnidadActiva ? (
+                  <>
+                    <select className="form-select" disabled value="">
+                      <option value="">No aplica mientras buscás por unidad arriba</option>
+                    </select>
+                    <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
+                      Borrá el texto en &quot;Buscar unidad&quot; para volver a filtrar por tipología.
+                    </span>
+                  </>
+                ) : loadingTipologias ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                     <div className="loading-spinner" /> <span style={{ fontSize: 12 }}>Cargando...</span>
                   </div>
+                ) : errorTipologias ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      color: 'var(--color-text-muted)',
+                      margin: 0,
+                      padding: '10px 0',
+                    }}
+                  >
+                    {errorTipologias}. Podés buscar unidad sin filtrar por tipología.
+                  </p>
+                ) : tipologias.length === 0 ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      color: 'var(--color-text-muted)',
+                      margin: 0,
+                      padding: '10px 0',
+                    }}
+                  >
+                    Sin tipologías disponibles. La búsqueda por unidad sigue activa.
+                  </p>
                 ) : (
-                  <select className="form-select" value={proyectoSelId}
-                    onChange={(e) => setProyectoSelId(e.target.value)}>
-                    <option value="">— Seleccionar proyecto —</option>
-                    {proyectos.map((pr) => (
-                      <option key={pr.id} value={pr.id}>{pr.nombre} · {pr.comuna}</option>
+                  <select
+                    className="form-select"
+                    value={tipologiaSel}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setTipologiaSel(v)
+                      setPropiedad(cotizacionId, { unidad_tipologia: v })
+                    }}
+                  >
+                    <option value="">Todas (sin filtrar por tipología)</option>
+                    {tipologias.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </select>
                 )}
               </div>
+
               <div className="form-group">
-                <label className="form-label">Unidad / Departamento</label>
+                <label className="form-label">Resultados · cargar en cotización</label>
                 <select
                   className="form-select"
-                  key={proyectoSelId}
+                  key={`${proyectoSelId}-${tipologiaSel}-${unidadBusqueda.trim()}`}
                   value={unidadSelId}
                   onChange={(e) => {
                     const v = e.target.value
                     setUnidadSelId(v)
                     if (v) handleCargarUnidad(v)
                   }}
-                  disabled={!proyectoSelId || loadingUnidades}
+                  disabled={!proyectoSelId || modoManual || buscandoUnidades}
                 >
                   <option value="">— Seleccionar unidad —</option>
                   {unidades.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.numero} · {u.tipologia} · {u.sup_total_m2}m² · {formatUF(u.precio_lista_uf)}
+                      {textoResultadoStock(inmobiliariaNombre, proyectoNombre, u, unidadBusqueda)}
                     </option>
                   ))}
                 </select>
@@ -246,9 +588,9 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                     No se pudieron cargar unidades: {errorUnidades}
                   </p>
                 )}
-                {isSupabaseConfigured() && proyectoSelId && !loadingUnidades && !errorUnidades && unidades.length === 0 && (
+                {proyectoSelId && !modoManual && !buscandoUnidades && !errorUnidades && unidades.length === 0 && (
                   <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6, marginBottom: 0 }}>
-                    La consulta no devolvió filas. Comprueba que exista la tabla <code style={{ fontSize: 10 }}>Stock_Imagina_Prueba</code> y políticas RLS para lectura.
+                    No hay unidades que coincidan. Revisá el número, dejá el campo vacío para listado general o verificá la consola (logs <code style={{ fontSize: 10 }}>[STOCK]</code>).
                   </p>
                 )}
               </div>
@@ -330,7 +672,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   readOnly={!modoManual}
                   onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
                   decimals={2}
-                  style={{ opacity: modoManual ? 1 : 0.7 }}
+                  style={{ opacity: opacidadAntecedentesSupabase }}
                 />
               ) : (
                 <input
@@ -339,7 +681,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                   value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
                   readOnly={!modoManual}
                   onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
-                  style={{ opacity: modoManual ? 1 : 0.7 }}
+                  style={{ opacity: opacidadAntecedentesSupabase }}
                 />
               )}
             </div>
@@ -395,7 +737,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                     precio_neto_uf: Math.round((lista - duf) * 100) / 100,
                   })
                 }}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -428,7 +770,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_max_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -467,7 +809,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
                 readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_descuento_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: modoManual ? 1 : 0.7, width: '100%' }}
+                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>

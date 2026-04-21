@@ -28,6 +28,7 @@ const PCT_EN_BD_ES_0_A_100 = false
  * `ProyectoRowDefinitivo` → selector de proyecto.
  */
 export function mapProyectoRowDefinitivo(row: ProyectoRowDefinitivo): ProyectoSupabase {
+  const idInmo = row.id_inmobiliaria
   return {
     id: String(row.id),
     nombre: s(row.nombre, 'Sin nombre'),
@@ -35,6 +36,8 @@ export function mapProyectoRowDefinitivo(row: ProyectoRowDefinitivo): ProyectoSu
     barrio: s(row.barrio),
     direccion: s(row.direccion),
     inmobiliaria: row.inmobiliaria_nombre ?? undefined,
+    id_inmobiliaria: idInmo !== null && idInmo !== undefined ? String(idInmo) : undefined,
+    estado: row.estado != null ? s(row.estado) : undefined,
   }
 }
 
