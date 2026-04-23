@@ -19,10 +19,13 @@ export function unidadSupabaseToDatosPropiedad(
 ): DatosPropiedad {
   const reserva = options.reserva_clp_default ?? DEFAULT_RESERVA
   return {
-    proyecto_nombre: proyecto.nombre,
-    proyecto_comuna: proyecto.comuna,
+    // Campos denormalizados en la unidad (stock maestro Brekto) tienen precedencia.
+    // Si no vienen, fallback al `ProyectoSupabase` (catálogo local del cotizador).
+    proyecto_nombre: unidad.proyecto_nombre || proyecto.nombre,
+    proyecto_comuna: unidad.comuna || proyecto.comuna,
     proyecto_barrio: proyecto.barrio ?? '',
-    proyecto_direccion: proyecto.direccion ?? '',
+    // Oculto hasta cierre comercial; no se lee del stock aunque exista.
+    proyecto_direccion: '',
     unidad_numero: unidad.numero,
     unidad_tipologia: unidad.tipologia,
     unidad_sup_interior_m2: unidad.sup_interior_m2,

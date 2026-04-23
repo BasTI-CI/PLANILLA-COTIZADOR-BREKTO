@@ -282,6 +282,9 @@ export interface UnidadSupabase {
   estacionamiento_uf: number
   bodega_uf: number
   disponible: boolean
+  /** Denormalizados en el stock maestro (Brekto). Si vienen, tienen precedencia sobre `ProyectoSupabase` al mapear a `DatosPropiedad`. */
+  proyecto_nombre?: string
+  comuna?: string
 }
 
 // ------------------------------------------------------------------

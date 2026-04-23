@@ -25,6 +25,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.99.1",
     "html2canvas": "^1.4.1",
     "immer": "^11.1.4",

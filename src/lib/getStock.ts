@@ -146,26 +146,44 @@ export function mapStockItemToUnidadSupabase(
 
   const base = pickNumeroUnidadFromStockRow(raw, id)
   const numero = aplicarHintNumeroBusqueda(base, unidadBusquedaHint)
+
+  // Precios: el stock maestro guarda valores en UF (columnas sin sufijo _uf).
+  // `precio_neto_uf` es derivado (no se lee de BD); mantiene la invariante lista − descuento = neto (§8.1).
+  const precio_lista_uf = n(raw.precio_lista_uf ?? raw.precio_lista ?? raw.precio_uf)
+  const descuento_uf = n(raw.descuento_uf ?? raw.descuento)
+  const precio_neto_uf = Math.round((precio_lista_uf - descuento_uf) * 100) / 100
+
+  // Bonos en el stock maestro vienen como porcentaje 0–100 (prefijo `f_*`); el motor usa decimal 0–1.
+  const bono_descuento_pct =
+    raw.f_desc_bono_inmobiliario != null
+      ? n(raw.f_desc_bono_inmobiliario) / 100
+      : n(raw.bono_descuento_pct ?? raw.bono_pct)
+
   return {
     id,
     proyecto_id: s(raw.proyecto_id ?? raw.proyectoId, proyectoIdFallback),
     numero: numero || id,
     tipologia: s(raw.tipologia ?? raw.tipo ?? raw.modelo, '—'),
-    sup_interior_m2: n(raw.sup_interior_m2 ?? raw.sup_interior ?? raw.m2_interior),
-    sup_terraza_m2: n(raw.sup_terraza_m2 ?? raw.sup_terraza ?? raw.m2_terraza),
+    sup_interior_m2: n(raw.sup_interior_m2 ?? raw.sup_interior ?? raw.m2_interior ?? raw.superficie_util),
+    sup_terraza_m2: n(raw.sup_terraza_m2 ?? raw.sup_terraza ?? raw.m2_terraza ?? raw.superficie_terraza),
     sup_total_m2: n(raw.sup_total_m2 ?? raw.sup_total ?? raw.m2_total),
     orientacion: s(raw.orientacion ?? raw.orientación),
     entrega: s(raw.entrega ?? raw.fecha_entrega),
-    precio_lista_uf: n(raw.precio_lista_uf ?? raw.precio_lista ?? raw.precio_uf),
-    descuento_uf: n(raw.descuento_uf ?? raw.descuento),
-    precio_neto_uf: n(raw.precio_neto_uf ?? raw.precio_neto),
-    bono_descuento_pct: n(raw.bono_descuento_pct ?? raw.bono_pct),
-    bono_max_pct: n(raw.bono_max_pct),
-    bono_aplica_adicionales: b(raw.bono_aplica_adicionales, false),
-    pie_pct: n(raw.pie_pct),
-    estacionamiento_uf: n(raw.estacionamiento_uf),
-    bodega_uf: n(raw.bodega_uf),
-    disponible: raw.disponible === undefined ? true : Boolean(raw.disponible),
+    precio_lista_uf,
+    descuento_uf,
+    precio_neto_uf,
+    bono_descuento_pct,
+    // Campos que el asesor rellena en el formulario (no vienen del stock maestro en esta versión).
+    bono_max_pct: 0,
+    bono_aplica_adicionales: false,
+    pie_pct: 0,
+    estacionamiento_uf: 0,
+    bodega_uf: 0,
+    // El stock maestro entrega solo unidades disponibles (filtro aguas arriba).
+    disponible: true,
+    // Denormalizados: tienen precedencia sobre `ProyectoSupabase` al armar `DatosPropiedad`.
+    proyecto_nombre: s(raw.proyecto ?? raw.proyecto_nombre) || undefined,
+    comuna: s(raw.comuna) || undefined,
   }
 }
 

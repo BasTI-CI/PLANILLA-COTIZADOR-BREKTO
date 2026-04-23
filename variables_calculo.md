@@ -39,38 +39,118 @@ Archivos de implementación:
 
 Objetivo v2: la **librería** recibe un JSON alineado con `Cotizacion`; la web rellena ese objeto desde API + formulario.
 
-### Desde API (Supabase u otro backend)
+### Arquitectura de datos en producción (vigente)
 
-**Estado:** mapeo **provisional** solo para validar cálculos; la BD de producción será otra (ver «Prioridad: motor de cálculo vs capa de datos» arriba).
+Dos proyectos Supabase dentro de la cuenta **Capital_Desarrollo**, consumidos por el cotizador:
 
-Hoy el ejemplo vive en `useSupabase.ts` → tabla **`Stock_Imagina_Prueba`** (esquema de prueba) → `UnidadSupabase`. Al cargar una unidad se mapea a `DatosPropiedad` (y defaults). Los nombres de columna de esta tabla **no** pretenden ser el contrato largo plazo.
+```
+Cotizador_Multiple_Dev   ← el front se conecta aquí (VITE_SUPABASE_URL / ANON_KEY)
+├── tabla: inmobiliarias     (id, codigo, nombre)
+├── tabla: proyectos         (id, id_inmobiliaria, codigo, nombre, nombre_inmobiliaria, estado)
+└── edge functions:
+    ├── get-tipologias       → proxy a Brekto (x-internal-token)
+    └── get-stock            → proxy a Brekto (x-internal-token)
 
-| Columna / origen actual (ejemplo) | Campo en `DatosPropiedad` | Notas |
-|-----------------------------------|---------------------------|--------|
-| `precio` | `precio_lista_uf` | |
-| `precio_dcto` | `precio_neto_uf` | |
-| derivado | `descuento_uf` | `precio_lista_uf - precio_neto_uf` |
-| `dcto` | `bono_descuento_pct` | **Contrato lógico:** decimal (ej. `0.15`); validar que la BD definitiva use el mismo criterio |
-| `bono10` | `bono_max_pct` | **Descuento por Bonificación (%)** en UI; en escritura solo afecta estac.+bodega si `bono_aplica_adicionales` (ver §3.1) |
-| (fijo hoy) | `bono_aplica_adicionales` | Cuando la API definitiva lo exponga, mapear aquí |
-| superficies, modelo, etc. | campos `unidad_*` | |
-| (no en fila actual) | `estacionamiento_uf`, `bodega_uf` | Rellenar desde API cuando existan |
+Brekto_Dev               ← base maestra de stock (no accesible desde el front)
+├── tabla: stock             (columnas documentadas abajo)
+└── edge functions:
+    ├── stock-get-tipologias
+    └── stock-get-stock
+```
 
-Metadatos de proyecto (`proyecto_nombre`, comuna, barrio, dirección) vienen hoy de un **proyecto sintético** en código; en producción vendrán del recurso proyecto/inmobiliaria asociado a la unidad.
+**Flujo UI de filtros (sin cambios — ya funciona):**
 
-**BD definitiva (Supabase):** activar `VITE_STOCK_BACKEND=definitivo` y ajustar en código `src/lib/stock/definitivo/schema.ts` (nombres de tablas y FK), `rawRowTypes.ts` (columnas = tipos de fila PostgREST) y `mapDefinitivo.ts` (columna → campo `UnidadSupabase` / `ProyectoSupabase`). Documenta aquí la tabla de equivalencias cuando cierres nombres reales.
+1. **Dropdown Inmobiliaria** — query directa a `Cotizador_Multiple_Dev.inmobiliarias`.
+2. **Dropdown Proyecto** — query directa a `Cotizador_Multiple_Dev.proyectos` filtrada por `id_inmobiliaria`.
+3. **Dropdown Tipología** — `supabase.functions.invoke('get-tipologias', { inmobiliaria, proyecto })` → proxy a Brekto.
+4. **Dropdown Unidad** — `supabase.functions.invoke('get-stock', { inmobiliaria, proyecto, tipologia?, unidad? })` → proxy a Brekto → devuelve filas de `stock`.
 
-**Implementación en código:** capa `src/lib/stock/` — `StockRepository`, repos **Imagina** (`imaginaPruebaRepository.ts`) o **definitivo** (`definitivo/supabaseDefinitivoRepository.ts`), `createDefaultStockRepository` según `VITE_STOCK_BACKEND`, `unidadSupabaseToDatosPropiedad`, `validateUnidadSupabaseForMotor`. Motor: `src/lib/engines/*`.
+No se crean tablas nuevas ni repositorios. El front **nunca toca** `Brekto_Dev.stock` directamente: siempre vía edge function.
+
+### Mapeo columnas `stock` (Brekto) → `UnidadSupabase` → `DatosPropiedad`
+
+Implementado en `mapStockItemToUnidadSupabase` ([src/lib/getStock.ts](src/lib/getStock.ts)) y en el puente `unidadSupabaseToDatosPropiedad` ([src/lib/stock/mapToDatosPropiedad.ts](src/lib/stock/mapToDatosPropiedad.ts)).
+
+#### Proyecto (denormalizado en el row de stock)
+
+| Columna `stock` | `UnidadSupabase` (opc.) | `DatosPropiedad` | Notas |
+|---|---|---|---|
+| `proyecto` | `proyecto_nombre` | `proyecto_nombre` | Precedencia sobre `ProyectoSupabase.nombre` si viene |
+| `comuna` | `comuna` | `proyecto_comuna` | Precedencia sobre `ProyectoSupabase.comuna` si viene |
+| — | — | `proyecto_barrio` | `""` (no se usa) |
+| `direccion` (ignorado) | — | `proyecto_direccion` | `""` — ocultado hasta cierre comercial |
+
+#### Unidad
+
+| Columna `stock` | `UnidadSupabase` | `DatosPropiedad` |
+|---|---|---|
+| `unidad` | `numero` | `unidad_numero` |
+| `tipologia` | `tipologia` | `unidad_tipologia` |
+| `superficie_util` | `sup_interior_m2` | `unidad_sup_interior_m2` |
+| `superficie_terraza` | `sup_terraza_m2` | `unidad_sup_terraza_m2` |
+| `m2_total` | `sup_total_m2` | `unidad_sup_total_m2` |
+| `orientacion` | `orientacion` | `unidad_orientacion` |
+| `entrega` | `entrega` | `unidad_entrega` |
+
+#### Precios (UF)
+
+| Columna `stock` | `UnidadSupabase` | Notas |
+|---|---|---|
+| `precio_lista` | `precio_lista_uf` | Directo |
+| `descuento` | `descuento_uf` | Directo |
+| — (NO se lee) | `precio_neto_uf` | **Derivado en el mapper:** `precio_lista − descuento`. Cumple invariante §8.1 por construcción. La columna `precio_neto` de `stock` existe pero **no se usa** (es redundante con la derivación). |
+
+#### Bonos / beneficios
+
+| Columna `stock` | `UnidadSupabase` | Notas |
+|---|---|---|
+| `f_desc_bono_inmobiliario` | `bono_descuento_pct` | **BD en %, motor en decimal:** el mapper divide por 100 (ej. `15` → `0.15`). Convención de nombre: prefijo `f_` = factor guardado como porcentaje. |
+| — | `bono_max_pct` | Default `0`. El asesor lo ingresa en el formulario como «Descuento por Bonificación (%)». En stock existe `f_beneficio_max_inmobiliario` pero hoy **no se consume**. |
+| — | `bono_aplica_adicionales` | Default `false`. El asesor lo marca en el formulario. |
+
+#### Adicionales y operacional
+
+| Columna `stock` | `UnidadSupabase` | Notas |
+|---|---|---|
+| — | `estacionamiento_uf` | Default `0`. Columna `uf_estacionamiento` existe en stock pero hoy **no se consume**. |
+| — | `bodega_uf` | Default `0`. Columna `uf_bodega` existe pero hoy **no se consume**. |
+| — | `pie_pct` | Default `0` (el form arranca con `DEFAULT_PIE.pie_pct = 0.10`). Columna `f_pie` existe pero hoy **no se consume**. |
+| — | `disponible` | Siempre `true`. El stock maestro ya entrega solo unidades vigentes (filtro aguas arriba); `stock.estado` no se consume en este cotizador. |
+| — (no mapeado a `DatosPropiedad` aquí) | — | `reserva_clp` se completa con `DEFAULT_RESERVA = 100_000` en el puente; la columna `reserva` del stock existe pero hoy **no se consume**. |
 
 ### Rellenados en sesión (manual en formulario)
 
 No dependen de la fila de stock (o se sobreescriben):
 
-- **`DatosDesglosePie`** — toda la sección pie: `pie_pct`, `upfront_pct`, cuotas antes/después, cuotón, `pie_n_cuotas_total`, etc.
-- **`DatosHipotecario`** — tasa, plazo, % aprobación, seguros, etc.
-- **`DatosRentabilidad`** — plusvalía, arriendo / AirBnB (la misma pestaña Cotización los expone; alimentan resultados pero no el “detalle precio” desde BD).
-- **`uf_valor_clp`** en `DatosGlobales` — puede venir de API UF del día o ingreso manual.
-- **`reserva_clp`** — hoy en `DatosPropiedad`; puede quedar como dato de operación comercial.
+- **`DatosDesglosePie`** — toda la sección pie: `pie_pct`, `upfront_pct`, cuotas antes/después, cuotón, `pie_n_cuotas_total`.
+- **`DatosHipotecario`** — tasa, plazo, % aprobación, seguros.
+- **`DatosRentabilidad`** — plusvalía, arriendo / AirBnB.
+- **`uf_valor_clp`** en `DatosGlobales` — API UF del día o ingreso manual.
+- **`reserva_clp`** — default 100.000 CLP; operación comercial.
+- **Campos de unidad con default en mapper:** `bono_max_pct`, `bono_aplica_adicionales`, `estacionamiento_uf`, `bodega_uf`, `pie_pct` (ver cuadros arriba).
+
+### Deuda técnica documentada
+
+1. **Columnas de stock ignoradas:** `precio_neto`, `f_beneficio_max_inmobiliario`, `f_pie`, `uf_estacionamiento`, `uf_bodega`, `reserva`, `estado`, `cantidad`, `precio_total`, `precio_web`, `archivo_origen`, `upload_id`, `aprobado*`, `pre_reserva_info`, etc. Si negocio quiere consumir alguna, el único lugar a tocar es `mapStockItemToUnidadSupabase`.
+2. **`precio_neto` redundante en stock:** la columna existe pero el front la deriva (`lista − descuento`) para garantizar la invariante §8.1. Si en algún momento el stock guarda descuentos adicionales no reflejados en `descuento`, habría que redefinir.
+3. **Repositorios legacy aún en código:** `ImaginaPruebaStockRepository`, `SupabaseDefinitivoRepository`, `ProyectosPublicRepository`. La capa de stock del flujo productivo es la edge function `get-stock`; los repos sirven como fallback local (modo demo sin Supabase). No alineados 1:1 con el flujo productivo.
+
+### Plantillas para futuros mappings (cuando el stock agregue más columnas)
+
+Cuando Brekto exponga una columna que ya se mapea con default, reemplazar el default por lectura real en `mapStockItemToUnidadSupabase`. Ejemplos:
+
+```ts
+// Hoy:
+bono_max_pct: 0,
+
+// Cuando la columna se active:
+bono_max_pct:
+  raw.f_beneficio_max_inmobiliario != null
+    ? n(raw.f_beneficio_max_inmobiliario) / 100
+    : 0,
+```
+
+Actualizar entonces esta sección marcando la columna como «consumida».
 
 ---
 
@@ -438,52 +518,39 @@ Referencia: captura abril 2026 (UF = 39.841,72). Fila de ejemplo sin estacionami
 |----------|-------------|
 | **Valor tasación** | Valor del departamento **con** beneficio inmobiliario (en Excel: «Precio con Bono Pie» / base tasación del depto). En código: `valor_tasacion_uf` cuando solo hay depto; refleja §3.1 (`bono_descuento_pct`, `bono_max_pct` / Descuento por Bonificación). |
 | **Valor escrituración** | Tasación del depto tras reglas de escritura (`bono_max`, etc.) **más adicionales** (con o sin el mismo factor según `bono_aplica_adicionales`). En código: `valor_escritura_uf`. **Si no hay adicionales, escrituración = tasación** (en el ejemplo del cuadro son iguales: 3.389,80 UF). |
-| **Pie a documentar** | Porcentaje sobre **valor escrituración** → `pie_total_uf = valor_escritura_uf * pie_pct` (**esto el motor ya lo hace bien**). |
+| **Pie a documentar** | Porcentaje sobre **valor escrituración** → `pie_total_uf = valor_escritura_uf * pie_pct`. |
 
-### Qué hace bien el cotizador (motor principal)
+### Estado del motor frente a la planilla
 
 - `valor_tasacion_uf = precio_neto / (1 - bono_descuento_pct)` alinea con «Precio con Bono» del depto en el ejemplo (~3.389,80 UF a partir de neto 2.881,33 y 15 %).
 - `valor_escritura_uf`, `pie_total_uf`, `monto_credito_uf`, pie % + LTV = 100 % sobre la misma base de escrituración.
 - Coherencia **Pie UF + Crédito UF = Valor escrituración** cuando los % suman 100 %.
+- **Desglose de pie en CLP:** `calcularMontosDesglosePieClp` aplica cada `*_pct` sobre `valor_escritura_uf × uf_valor_clp`, coincidente con la planilla (ver §3.2 y verificación numérica abajo).
 
-### Error principal: CUADRO DE PAGO PIE (montos en pesos)
+### Regla vigente del cuadro de pago pie
 
-En la planilla, los porcentajes del bloque **Upfront**, **Cuotón**, **% antes/después de entrega** (y el tramo asociado a «% pie cuotas») se calculan sobre el **valor de escrituración en pesos** (`valor_escritura_uf × UF`), **no** sobre el monto del pie documentado (`pie_total_uf × UF`).
+Los porcentajes de **Upfront**, **Cuotón**, **% antes/después de entrega** (y el tramo asociado a «% pie cuotas») se calculan sobre el **valor de escrituración en pesos** (`valor_escritura_uf × UF`), **no** sobre el monto del pie documentado (`pie_total_uf × UF`). Esto es lo que hoy implementa [`calculosPie.ts`](src/lib/engines/calculosPie.ts) y lo que asumen [`CotizacionForm.tsx`](src/components/cotizacion/CotizacionForm.tsx) y [`calculosDiversificacion.ts`](src/lib/engines/calculosDiversificacion.ts) al llamarla con `valor_escritura_uf`.
 
-Comprobación numérica (ejemplo Excel):
+Verificación numérica (ejemplo Excel, sin adicionales → escrituración = 3.389,80 UF; UF = 39.841,72):
 
-| Concepto | Fórmula planilla | Resultado ~ |
-|----------|------------------|---------------|
-| Base CLP escrituración | 3.389,80 × 39.841,72 | ~135.055.461 CLP |
-| Upfront 2 % | 2 % × base escrituración CLP | **~2.701.109** (coincide con Excel) |
-| Cuotón 1 % | 1 % × base escrituración CLP | **~1.350.555** |
-| Cuota después 2 % / 48 | (2 % × base escrituración CLP) / 48 | **~56.273** / mes |
+| Concepto | Fórmula (implementada) | Resultado ~ | Excel |
+|----------|------------------------|-------------|-------|
+| Base CLP escrituración | 3.389,80 × 39.841,72 | ~135.055.461 CLP | — |
+| Upfront 2 % | 2 % × base escrituración CLP | ~2.701.109 | ✓ |
+| Cuotón 1 % | 1 % × base escrituración CLP | ~1.350.555 | ✓ |
+| Cuota después 2 % / 48 | (2 % × base escrituración CLP) / 48 | ~56.273 / mes | ✓ |
 
-**Cálculo actual del cotizador** (`calculosPie.ts`): aplica cada `*_pct` sobre **`pie_total_uf`** (p. ej. 677,96 UF × 2 % × UF ≈ **~540.219 CLP** de upfront), es decir **~5× menor** que el upfront correcto en el ejemplo. Lo mismo afecta cuotón y cuotas antes/después: **todos los montos del resumen financiero de pie en la web quedan mal** salvo que por casualidad `pie_pct` fuera 100 %.
+Los tests en [`calculosPie.test.ts`](src/lib/engines/calculosPie.test.ts) fijan este comportamiento (`monto_upfront_clp = valor_escritura_uf × upfront_pct × UF`, etc.).
 
-### Listado de errores / desalineaciones (pendiente de corrección en código)
+### Pendientes menores (paridad funcional, no bugs de cálculo)
 
-1. **`calculosPie.ts` — base incorrecta**  
-   `calcularMontosDesglosePieClp` usa `pie_total_uf` como base de todos los `upfront_pct`, `cuoton_pct`, `cuotas_*_pct`. Debe alinearse con Excel: base = **`valor_escritura_uf * uf_valor_clp`** (o equivalente en UF multiplicando al final). La firma deberá recibir `valor_escritura_uf` (y `uf_valor_clp`), no inferir el desglose solo desde `pie_total_uf`.
+1. **«PIE A PAGAR» explícito**  
+   En la captura Excel, 5 % sobre la base de escrituración CLP coincide con ~6.752.773 (componente de caja vs pie documentado 20 %). El cotizador aún **no expone** esa línea como resultado dedicado; la derivación (`pie_a_pagar_uf = pie_total_uf − bono_pie_uf`) está documentada en §1.0.1 pero no hay campo persistido ni celda en pantalla. Añadirla si negocio requiere mostrarla junto a «Pie a documentar».
 
-2. **`variables_calculo.md` §3.2 (histórico)**  
-   Indicaba que el desglose era «cada % del pie total»; eso **reproduce el bug**. La regla correcta es la de esta §9.
-
-3. **`CotizacionForm.tsx`**  
-   Los montos mostrados (Monto upfront, cuota antes/después, cuotón en $) provienen de `calcularMontosDesglosePieClp` → **erróneos** frente a la planilla.
-
-4. **`calculosPie.test.ts`**  
-   Los tests fijan el comportamiento incorrecto; habrá que reescribirlos con la base escrituración CLP.
-
-5. **`validarResultadosCotizacion`**  
-   No audita el desglose pie en CLP; convendrá añadir comprobaciones cuando la fórmula esté corregida.
-
-6. **«PIE A PAGAR» (5 % en el cuadro Excel)**  
-   En la captura, 5 % sobre la base de escrituración CLP coincide con ~6.752.773 (componente de caja vs pie documentado 20 %). El cotizador **no modela** aún esa línea explícita; no es el mismo bug que el punto 1, pero falta paridad funcional con el cuadro si se requiere mostrar «PIE A PAGAR» vs «Pie a documentar».
+2. **Auditoría del desglose pie en CLP**  
+   [`validarResultadosCotizacion`](src/lib/engines/validarCalculosCotizacion.ts) valida tasación / escritura / pie-crédito (§8) pero no recomputa los montos CLP del desglose. Agregar una comprobación `calcularMontosDesglosePieClp(res.valor_escritura_uf, cot.pie, UF)` vs resultado motor daría un seguro extra frente a regresiones.
 
 ### Qué no se ha re-auditado en esta revisión
 
 - Redondeos peso a peso del **dividendo** (~502.803) frente a `calcularHipotecario` (seguros, vida mínima, etc.).
 - Orden exacto de columnas «Precio Lista» vs «Precio con Bono» en todas las filas del Excel (la numeración del ejemplo se tomó de la captura y del coherente 2.881,33 → 3.389,80 con 15 % beneficio).
-
-*Siguiente paso sugerido:* corregir `calculosPie.ts` + llamadas + tests; actualizar §3.2 con la fórmula definitiva en una sola versión (sin duplicar «código actual vs Excel»).
