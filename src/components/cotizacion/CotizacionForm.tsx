@@ -239,8 +239,8 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   if (!cot) return null
 
   const busquedaUnidadActiva = Boolean(unidadBusqueda.trim()) && !modoManual
-  /** Antecedentes en modo Supabase: más gris si además hay texto en búsqueda por unidad (sigue vigente el select de resultados). */
-  const opacidadAntecedentesSupabase = modoManual ? 1 : busquedaUnidadActiva ? 0.48 : 0.7
+  /** Antecedentes provenientes del stock (proyecto/comuna/tipología/precio lista): más gris si además hay texto en búsqueda por unidad (sigue vigente el select de resultados). */
+  const opacidadAntecedentesStock = modoManual ? 1 : busquedaUnidadActiva ? 0.48 : 0.7
 
   const promos = cot.promociones ?? DEFAULT_PROMOCIONES
 
@@ -307,12 +307,12 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   return (
     <div className="fade-in cotizacion-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* ── Switch Supabase / Manual ── */}
+      {/* ── Switch Datos desde Stock / Manual ── */}
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">🏠 Fuente de Datos</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Supabase</span>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Datos desde Stock</span>
             <button
               onClick={() => handleModoSwitch(!modoManual)}
               style={{
@@ -331,7 +331,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
           </div>
         </div>
 
-        {/* ── Modo Supabase: seleccionar proyecto/unidad ── */}
+        {/* ── Modo Datos desde Stock: seleccionar proyecto/unidad ── */}
         {!modoManual && (
           <>
             {!isSupabaseConfigured() && (
@@ -672,7 +672,7 @@ create policy "inmobiliarias_select_anon"
                   readOnly={!modoManual}
                   onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
                   decimals={2}
-                  style={{ opacity: opacidadAntecedentesSupabase }}
+                  style={{ opacity: opacidadAntecedentesStock }}
                 />
               ) : (
                 <input
@@ -681,7 +681,7 @@ create policy "inmobiliarias_select_anon"
                   value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
                   readOnly={!modoManual}
                   onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
-                  style={{ opacity: opacidadAntecedentesSupabase }}
+                  style={{ opacity: opacidadAntecedentesStock }}
                 />
               )}
             </div>
@@ -726,7 +726,6 @@ create policy "inmobiliarias_select_anon"
                 min={0}
                 max={100}
                 value={descuentoPctLista}
-                readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => {
                   const lista = p.precio_lista_uf
@@ -737,7 +736,7 @@ create policy "inmobiliarias_select_anon"
                     precio_neto_uf: Math.round((lista - duf) * 100) / 100,
                   })
                 }}
-                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
+                style={{ width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -747,7 +746,6 @@ create policy "inmobiliarias_select_anon"
             <FormattedNumberInput
               className="form-input"
               value={p.descuento_uf}
-              readOnly={!modoManual}
               decimals={2}
               onChange={(val) => {
                 const lista = p.precio_lista_uf
@@ -767,10 +765,9 @@ create policy "inmobiliarias_select_anon"
                 min={0}
                 max={100}
                 value={p.bono_max_pct * 100}
-                readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_max_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
+                style={{ width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -806,10 +803,9 @@ create policy "inmobiliarias_select_anon"
                 min={0}
                 max={100}
                 value={p.bono_descuento_pct * 100}
-                readOnly={!modoManual}
                 decimals={2}
                 onChange={(val) => setPropiedad(cotizacionId, { bono_descuento_pct: val / 100 } as Partial<DatosPropiedad>)}
-                style={{ opacity: opacidadAntecedentesSupabase, width: '100%' }}
+                style={{ width: '100%' }}
               />
               <span className="suffix">%</span>
             </div>
@@ -819,7 +815,6 @@ create policy "inmobiliarias_select_anon"
             <FormattedNumberInput
               className="form-input"
               value={p.estacionamiento_uf}
-              readOnly={!modoManual}
               decimals={2}
               onChange={(val) => setPropiedad(cotizacionId, { estacionamiento_uf: val })}
             />
@@ -829,7 +824,6 @@ create policy "inmobiliarias_select_anon"
             <FormattedNumberInput
               className="form-input"
               value={p.bodega_uf}
-              readOnly={!modoManual}
               decimals={2}
               onChange={(val) => setPropiedad(cotizacionId, { bodega_uf: val })}
             />
