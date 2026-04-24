@@ -84,7 +84,8 @@ function resumenesAnuales(tabla: FilaDiversificacion[]): {
   capitalFin: number
   ahorroAcum: number
   rentAcum: number
-  egresoAcum: number
+  egresoPieAcum: number
+  divArrAcum: number
   ivaAcum: number
 }[] {
   return [1, 2, 3, 4, 5].map((ano) => {
@@ -95,7 +96,8 @@ function resumenesAnuales(tabla: FilaDiversificacion[]): {
       capitalFin: tabla[inicio + 11]?.capital_fin ?? 0,
       ahorroAcum: slice.reduce((s, f) => s + f.ahorro_mensual, 0),
       rentAcum: slice.reduce((s, f) => s + f.rentabilizacion, 0),
-      egresoAcum: slice.reduce((s, f) => s + f.egreso_cuotas, 0),
+      egresoPieAcum: slice.reduce((s, f) => s + f.egreso_pie_clp, 0),
+      divArrAcum: slice.reduce((s, f) => s + f.dividendo_menos_arriendo_clp, 0),
       ivaAcum: slice.reduce((s, f) => s + f.iva_inyeccion, 0),
     }
   })
@@ -106,7 +108,8 @@ function totales60Meses(tabla: FilaDiversificacion[]) {
     capitalFin: tabla[59]?.capital_fin ?? 0,
     ahorroAcum: tabla.reduce((s, f) => s + f.ahorro_mensual, 0),
     rentAcum: tabla.reduce((s, f) => s + f.rentabilizacion, 0),
-    egresoAcum: tabla.reduce((s, f) => s + f.egreso_cuotas, 0),
+    egresoPieAcum: tabla.reduce((s, f) => s + f.egreso_pie_clp, 0),
+    divArrAcum: tabla.reduce((s, f) => s + f.dividendo_menos_arriendo_clp, 0),
     ivaAcum: tabla.reduce((s, f) => s + f.iva_inyeccion, 0),
     gananciaAcum: tabla[59]?.ganancia_acumulada ?? 0,
   }
@@ -232,6 +235,7 @@ export default function TablaCashflow60m({
             <col style={{ width: 78 }} />
             <col style={{ width: 78 }} />
             <col style={{ width: 80 }} />
+            <col style={{ width: 86 }} />
             <col style={{ width: 80 }} />
             <col style={{ width: 88 }} />
             <col style={{ width: 90 }} />
@@ -244,7 +248,8 @@ export default function TablaCashflow60m({
                 'Capital inicio',
                 'Ahorro',
                 'Rentab.',
-                'Egresos',
+                'Egr. Pie',
+                'Div − Arr',
                 'Dev. IVA',
                 'Gan. acum.',
                 'Capital fin',
@@ -257,7 +262,13 @@ export default function TablaCashflow60m({
                       ? 'Capital final del mes menos capital inicial nominal (puede ser negativo al inicio si hay gastos de escrituración y egresos de pie).'
                       : h === 'Capital fin'
                         ? 'Saldo al cierre del mes tras ahorro, egresos, IVA y rentabilización.'
-                        : undefined
+                        : h === 'Egr. Pie'
+                          ? 'Upfront + cuotas antes/después de entrega + cuotón del mes. Siempre ≥ 0.'
+                          : h === 'Div − Arr'
+                            ? 'Dividendo hipotecario menos arriendo neto post-entrega. Con signo: positivo = egreso (pagas del bolsillo); negativo = ingreso (arriendo cubre el dividendo y sobra).'
+                            : h === 'Capital inicio'
+                              ? 'Saldo con el que arrancó el mes = capital final del mes anterior. Es la base sobre la que se calcula la rentabilidad del mes.'
+                              : undefined
                   }
                 >
                   {h}
@@ -282,8 +293,25 @@ export default function TablaCashflow60m({
                   <td style={tdBase}>{fmtCLP(f.capital_inicio)}</td>
                   <td style={{ ...tdBase, color: 'var(--color-success)' }}>+{fmtCLP(f.ahorro_mensual)}</td>
                   <td style={{ ...tdBase, color: '#60a5fa' }}>+{fmtCLP(f.rentabilizacion)}</td>
-                  <td style={{ ...tdBase, color: f.egreso_cuotas > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>
-                    {f.egreso_cuotas > 0 ? `-${fmtCLP(f.egreso_cuotas)}` : '—'}
+                  <td style={{ ...tdBase, color: f.egreso_pie_clp > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>
+                    {f.egreso_pie_clp > 0 ? `-${fmtCLP(f.egreso_pie_clp)}` : '—'}
+                  </td>
+                  <td
+                    style={{
+                      ...tdBase,
+                      color:
+                        f.dividendo_menos_arriendo_clp > 0
+                          ? 'var(--color-warning)'
+                          : f.dividendo_menos_arriendo_clp < 0
+                            ? 'var(--color-success)'
+                            : 'var(--color-text-muted)',
+                    }}
+                  >
+                    {f.dividendo_menos_arriendo_clp > 0
+                      ? `-${fmtCLP(f.dividendo_menos_arriendo_clp)}`
+                      : f.dividendo_menos_arriendo_clp < 0
+                        ? `+${fmtCLP(Math.abs(f.dividendo_menos_arriendo_clp))}`
+                        : '—'}
                   </td>
                   <td style={{ ...tdBase, color: '#10b981', fontWeight: f.iva_inyeccion > 0 ? 700 : 400 }}>
                     {f.iva_inyeccion > 0 ? `+${fmtCLP(f.iva_inyeccion)}` : '—'}
@@ -310,7 +338,7 @@ export default function TablaCashflow60m({
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              {['Año', 'Capital al cierre', 'Ahorro acum.', 'Rentabiliz. acum.', 'Egreso acum.', 'Dev. IVA'].map((h) => (
+              {['Año', 'Capital al cierre', 'Ahorro acum.', 'Rentabiliz. acum.', 'Egr. Pie acum.', 'Div − Arr acum.', 'Dev. IVA'].map((h) => (
                 <th key={h} style={{ ...thStyle, position: undefined, background: light ? '#f1f5f9' : 'rgba(255,255,255,0.04)', borderRadius: 4 }}>{h}</th>
               ))}
             </tr>
@@ -322,7 +350,10 @@ export default function TablaCashflow60m({
                 <td style={{ ...tdBase, fontWeight: 700, color: light ? '#b45309' : 'var(--color-gold)' }}>{fmtCLP(a.capitalFin)}</td>
                 <td style={{ ...tdBase, color: 'var(--color-success)' }}>+{fmtCLP(a.ahorroAcum)}</td>
                 <td style={{ ...tdBase, color: '#60a5fa' }}>+{fmtCLP(a.rentAcum)}</td>
-                <td style={{ ...tdBase, color: 'var(--color-warning)' }}>{a.egresoAcum > 0 ? `-${fmtCLP(a.egresoAcum)}` : '—'}</td>
+                <td style={{ ...tdBase, color: 'var(--color-warning)' }}>{a.egresoPieAcum > 0 ? `-${fmtCLP(a.egresoPieAcum)}` : '—'}</td>
+                <td style={{ ...tdBase, color: a.divArrAcum > 0 ? 'var(--color-warning)' : a.divArrAcum < 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                  {a.divArrAcum > 0 ? `-${fmtCLP(a.divArrAcum)}` : a.divArrAcum < 0 ? `+${fmtCLP(Math.abs(a.divArrAcum))}` : '—'}
+                </td>
                 <td style={{ ...tdBase, color: a.ivaAcum > 0 ? '#10b981' : 'var(--color-text-muted)', fontWeight: a.ivaAcum > 0 ? 700 : 400 }}>
                   {a.ivaAcum > 0 ? `+${fmtCLP(a.ivaAcum)}` : '—'}
                 </td>
@@ -333,7 +364,10 @@ export default function TablaCashflow60m({
               <td style={{ ...tdBase, fontWeight: 800, color: light ? '#92400e' : 'var(--color-gold)' }}>{fmtCLP(t60.capitalFin)}</td>
               <td style={{ ...tdBase, fontWeight: 700, color: 'var(--color-success)' }}>+{fmtCLP(t60.ahorroAcum)}</td>
               <td style={{ ...tdBase, fontWeight: 700, color: '#60a5fa' }}>+{fmtCLP(t60.rentAcum)}</td>
-              <td style={{ ...tdBase, fontWeight: 700, color: 'var(--color-warning)' }}>{t60.egresoAcum > 0 ? `-${fmtCLP(t60.egresoAcum)}` : '—'}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: 'var(--color-warning)' }}>{t60.egresoPieAcum > 0 ? `-${fmtCLP(t60.egresoPieAcum)}` : '—'}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: t60.divArrAcum > 0 ? 'var(--color-warning)' : t60.divArrAcum < 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                {t60.divArrAcum > 0 ? `-${fmtCLP(t60.divArrAcum)}` : t60.divArrAcum < 0 ? `+${fmtCLP(Math.abs(t60.divArrAcum))}` : '—'}
+              </td>
               <td style={{ ...tdBase, fontWeight: 700, color: '#10b981' }}>{t60.ivaAcum > 0 ? `+${fmtCLP(t60.ivaAcum)}` : '—'}</td>
             </tr>
           </tbody>

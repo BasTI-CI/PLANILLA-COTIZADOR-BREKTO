@@ -214,12 +214,13 @@ export interface DatosDiversificacion {
 
 export interface FilaDiversificacion {
   mes: number
-  capital_inicio: number
+  capital_inicio: number                      // saldo al inicio del mes (base sobre la que rentabiliza este mes)
   ahorro_mensual: number
-  rentabilizacion: number                // interés ganado ese mes
-  egreso_cuotas: number                  // pago cuota pie ese mes
-  iva_inyeccion: number                  // 0 salvo mes de IVA
-  capital_fin: number                    // saldo al final del mes
+  rentabilizacion: number                     // capital_inicio × tasa_mensual (no incluye movimientos del mes)
+  egreso_pie_clp: number                      // upfront + cuotas antes/después + cuotón del mes (siempre ≥ 0)
+  dividendo_menos_arriendo_clp: number        // (dividendo − arriendo neto) post-entrega. Positivo = egreso, negativo = ingreso.
+  iva_inyeccion: number                       // 0 salvo mes de IVA
+  capital_fin: number                         // capital_inicio + ahorro − (pie + div−arr) + iva + rentabilización
   ganancia_acumulada: number
 }
 

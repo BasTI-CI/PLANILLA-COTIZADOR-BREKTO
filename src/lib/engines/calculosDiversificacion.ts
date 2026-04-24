@@ -134,14 +134,20 @@ function ivaInyectadoEnMes(
 // ─────────────────────────────────────────────────────────────────
 // MOTOR DE DIVERSIFICACIÓN DE AHORROS — 60 meses (consolidación)
 //
+// Movimientos del mes:
 // - Pie: upfront mes 1; cuotas antes en 1…nAntes; cuotas después en (nAntes+1)…(nAntes+nDespues);
-//   cuotón en 1…nCuoton (según cotizador).
+//   cuotón en 1…nCuoton (según cotizador). Siempre ≥ 0 (egreso).
 // - Dividendo − arriendo: desde mes_entrega_flujo + 1 por cada cotización.
+//   Con signo: positivo = dividendo domina (egreso); negativo = arriendo domina (ingreso a caja).
 // - IVA: mes_entrega_flujo + 5 por unidad que califica (manual repartido o lump en primer mes si sin base).
 //
-// Rentabilidad = Capital_inicio × tasa_mensual
-// Capital_fin = Capital_inicio + Ahorro - Egreso + IVA + Rentabilidad
-// Egreso mensual = suma pie + max(suma(D−A) post-entrega, 0)
+// Convención de capitalización (modelo "deposito al inicio, interés desde el mes siguiente"):
+//   rentabilización_m   = capital_inicio_m × tasa_mensual       // sólo el saldo previo rentabiliza
+//   capital_inicio_m    = capital_fin_{m-1}                     // saldo con el que arranca el mes
+//   capital_fin_m       = capital_inicio_m + ahorro − (pie + (div−arr)) + iva + rentabilización_m
+//
+// Los depósitos (ahorro/IVA) y egresos del mes no entran a la base de rentabilidad
+// de ese mismo mes; recién rentabilizan desde el mes siguiente.
 // ─────────────────────────────────────────────────────────────────
 export function calcularDiversificacion(
   datos: DatosDiversificacion,
@@ -163,27 +169,46 @@ export function calcularDiversificacion(
 
   const tabla: FilaDiversificacion[] = []
 
+  // Arranque: capital inicial menos gastos de escrituración (upfront, fuera del bucle).
   let capital_anterior = diversif_capital_inicial_clp - gasto_escritura_total
 
   for (let mes = 1; mes <= 60; mes++) {
     const egreso_pie = sumaEgresoPieMes(cotizacionesActivas, mes, uf_valor_clp)
-    const da = sumaDividendoMenosArriendoPostEntrega(cotizacionesActivas, mes, uf_valor_clp)
-    const egreso_da = Math.max(da, 0)
-    const egreso = egreso_pie + egreso_da
+
+    // Dividendo − arriendo con SIGNO (sin clamp). Permite que el excedente de
+    // arriendo (arriendo > dividendo) entre como ingreso a caja.
+    const dividendo_menos_arriendo = sumaDividendoMenosArriendoPostEntrega(
+      cotizacionesActivas,
+      mes,
+      uf_valor_clp
+    )
 
     const iva_este_mes = ivaInyectadoEnMes(mes, datos, cotizacionesActivas, uf_valor_clp)
     const ahorro = diversif_ahorro_mensual_clp
 
-    const capital_inicio = capital_anterior + ahorro - egreso + iva_este_mes
+    // Modelo B: la rentabilidad del mes m se calcula sobre el saldo con el que
+    // arrancó el mes (capital_inicio = capital_fin del mes anterior). Los
+    // movimientos de este mes (ahorro, pie, div−arr, iva) rentabilizan recién
+    // desde el mes siguiente.
+    const capital_inicio = capital_anterior
     const rentabilizacion = Math.round(capital_inicio * diversif_tasa_mensual)
-    const capital_fin = capital_inicio + rentabilizacion
+
+    // Cierre del mes: saldo previo + movimientos netos + rentabilidad del mes.
+    const capital_fin =
+      capital_inicio +
+      ahorro -
+      egreso_pie -
+      dividendo_menos_arriendo +
+      iva_este_mes +
+      rentabilizacion
 
     tabla.push({
       mes,
       capital_inicio: Math.round(capital_inicio),
       ahorro_mensual: ahorro,
       rentabilizacion,
-      egreso_cuotas: Math.round(egreso),
+      egreso_pie_clp: Math.round(egreso_pie),
+      dividendo_menos_arriendo_clp: Math.round(dividendo_menos_arriendo),
       iva_inyeccion: Math.round(iva_este_mes),
       capital_fin: Math.round(capital_fin),
       ganancia_acumulada: Math.round(capital_fin - diversif_capital_inicial_clp),
