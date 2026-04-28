@@ -22,6 +22,19 @@ interface Props {
   pdfLight?: boolean
   /** true = sólo resumen anual (sin tabla mes a mes) */
   annualOnly?: boolean
+  /**
+   * Recorta el rango de meses visibles en la tabla mes-a-mes (inclusivo, 1–60).
+   * Los cálculos de totales / resumen anual siguen siendo sobre `tabla` completa,
+   * para que las tarjetas de cabecera no se distorsionen al partir el anexo en
+   * varias hojas (p. ej. [1, 24] en una hoja, [25, 60] en otra).
+   */
+  mesRango?: [number, number]
+  /**
+   * Oculta el bloque "Resumen anual" + tarjeta de contexto al final.
+   * Útil en hojas del anexo donde el resumen ya está en otra hoja del PDF
+   * y solo interesa la tabla mes-a-mes.
+   */
+  omitResumenAnual?: boolean
 }
 
 const fmtCLP = (v: number) =>
@@ -123,10 +136,16 @@ export default function TablaCashflow60m({
   pdfMode = false,
   pdfLight = false,
   annualOnly = false,
+  mesRango,
+  omitResumenAnual = false,
 }: Props) {
   if (tabla.length === 0) return null
 
   const light = pdfMode && pdfLight
+  // Filas a renderizar en la tabla mes-a-mes (los cálculos de totales no usan este filtro).
+  const filasVisibles = mesRango
+    ? tabla.filter((f) => f.mes >= mesRango[0] && f.mes <= mesRango[1])
+    : tabla
 
   const resumenAnual = resumenesAnuales(tabla)
   const t60 = totales60Meses(tabla)
@@ -152,12 +171,13 @@ export default function TablaCashflow60m({
   const thStyle: React.CSSProperties = {
     position: pdfMode ? undefined : 'sticky',
     top: pdfMode ? undefined : 0,
-    background: light ? '#e2e8f0' : '#0f1628',
+    // Modo claro (PDF) usa azul oscuro corporativo + texto blanco; modo oscuro mantiene fondo dark.
+    background: light ? '#0d4d80' : '#0f1628',
     zIndex: 10,
     padding: '8px 10px',
     fontSize: pdfMode ? 9 : 11,
     fontWeight: 700,
-    color: light ? '#334155' : 'var(--color-text-muted)',
+    color: light ? '#ffffff' : 'var(--color-text-muted)',
     textTransform: 'uppercase',
     letterSpacing: '0.4px',
     textAlign: 'right' as const,
@@ -277,7 +297,7 @@ export default function TablaCashflow60m({
             </tr>
           </thead>
           <tbody>
-            {tabla.map((f) => {
+            {filasVisibles.map((f) => {
               const isEntrega = mesesEntrega.includes(f.mes)
               const isIVA = mesesIVA.includes(f.mes)
               const isCierreAno = f.mes % 12 === 0
@@ -331,6 +351,7 @@ export default function TablaCashflow60m({
       )}
 
       {/* ── Resumen Anual ── */}
+      {!omitResumenAnual && (
       <div>
         <div style={{ fontSize: 11, fontWeight: 700, color: light ? '#64748b' : 'var(--color-text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Resumen anual
@@ -339,7 +360,7 @@ export default function TablaCashflow60m({
           <thead>
             <tr>
               {['Año', 'Capital al cierre', 'Ahorro acum.', 'Rentabiliz. acum.', 'Egr. Pie acum.', 'Div − Arr acum.', 'Dev. IVA'].map((h) => (
-                <th key={h} style={{ ...thStyle, position: undefined, background: light ? '#f1f5f9' : 'rgba(255,255,255,0.04)', borderRadius: 4 }}>{h}</th>
+                <th key={h} style={{ ...thStyle, position: undefined, background: light ? '#0d4d80' : 'rgba(255,255,255,0.04)', borderRadius: 4 }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -404,6 +425,7 @@ export default function TablaCashflow60m({
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
