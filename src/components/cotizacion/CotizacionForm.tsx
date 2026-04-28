@@ -13,6 +13,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
 import type { DatosPropiedad, PromocionesCotizacion } from '@/types'
 import { DEFAULT_PROMOCIONES } from '@/types'
+import { exportarPdfOperacional } from '@/components/pdf/PdfOperacional'
 
 interface Props { cotizacionId: number }
 
@@ -76,9 +77,10 @@ const rowGridStyle: CSSProperties = {
 
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
-    cotizaciones, global, setPropiedad, setPie, setHipotecario, setRentabilidad,
+    cotizaciones, global, setGlobal, setPropiedad, setPie, setHipotecario, setRentabilidad,
     setModoFuente, cargarDesdeSupabase, setPromociones,
   } = useAppStore()
+  const [generandoOperacional, setGenerandoOperacional] = useState(false)
 
   const cot = cotizaciones[cotizacionId]
   const p = cot?.propiedad
@@ -306,6 +308,74 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   return (
     <div className="fade-in cotizacion-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── Datos del Documento (asesor + cliente, globales — se sincronizan en todas las cotizaciones) ── */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">📄 Datos del Documento</h3>
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+            Compartido entre cotizaciones · usado en exportables PDF
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="form-group">
+            <label className="form-label">Asesor (nombre)</label>
+            <input
+              className="form-input"
+              value={global.asesor_nombre}
+              onChange={(e) => setGlobal({ asesor_nombre: e.target.value })}
+              placeholder="Asesor Brekto"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Asesor (correo)</label>
+            <input
+              className="form-input"
+              type="email"
+              value={global.asesor_correo}
+              onChange={(e) => setGlobal({ asesor_correo: e.target.value })}
+              placeholder="ejemplo@brekto.cl"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Asesor (teléfono)</label>
+            <input
+              className="form-input"
+              value={global.asesor_telefono}
+              onChange={(e) => setGlobal({ asesor_telefono: e.target.value })}
+              placeholder="+56 9 1234 5678"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente / inversionista (nombre)</label>
+            <input
+              className="form-input"
+              value={global.inversionista_nombre}
+              onChange={(e) => setGlobal({ inversionista_nombre: e.target.value })}
+              placeholder="Nombre completo del cliente"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente (correo)</label>
+            <input
+              className="form-input"
+              type="email"
+              value={global.inversionista_correo}
+              onChange={(e) => setGlobal({ inversionista_correo: e.target.value })}
+              placeholder="cliente@ejemplo.cl"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente (RUT)</label>
+            <input
+              className="form-input"
+              value={global.inversionista_rut}
+              onChange={(e) => setGlobal({ inversionista_rut: e.target.value })}
+              placeholder="11.111.111-1"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* ── Switch Datos desde Stock / Manual ── */}
       <div className="card">
@@ -1478,6 +1548,45 @@ create policy "inmobiliarias_select_anon"
           })()}
         </div>
       </div>
+
+      {cot.activa && (
+        <button
+          className="btn btn-lg"
+          disabled={generandoOperacional}
+          onClick={async () => {
+            setGenerandoOperacional(true)
+            try {
+              await exportarPdfOperacional({
+                cot,
+                global,
+                inmobiliariaNombre,
+                proyectoNombre,
+              })
+            } finally {
+              setGenerandoOperacional(false)
+            }
+          }}
+          style={{
+            width: '100%',
+            background: '#0d4d80',
+            color: '#fff',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            fontSize: 13,
+            padding: '12px 16px',
+            border: 'none',
+          }}
+        >
+          {generandoOperacional ? (
+            <>
+              <div className="loading-spinner" style={{ borderTopColor: '#fff' }} />
+              Generando PDF interno...
+            </>
+          ) : (
+            <>📎 IMPRIMIR PARA USO INTERNO JIRA — OPERACIONES — UGC</>
+          )}
+        </button>
+      )}
 
       {cot.activa && (
         <div className="card">

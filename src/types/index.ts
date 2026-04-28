@@ -9,6 +9,12 @@
 export interface DatosGlobales {
   inversionista_nombre: string
   inversionista_rut: string
+  /** Correo del cliente / inversionista. Usado en header del PDF operacional (UGC / Jira). */
+  inversionista_correo: string
+  /** Datos del asesor comercial — usados en ambos exportables (comercial y operacional). */
+  asesor_nombre: string
+  asesor_correo: string
+  asesor_telefono: string
   cotizacion_fecha: string         // ISO date string
   uf_valor_clp: number             // valor UF del día (API o manual)
 }

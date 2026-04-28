@@ -315,10 +315,11 @@ export default function ModuloPDF() {
   )
   const [anexoTabla60m, setAnexoTabla60m] = useState(false)
   const [generando, setGenerando] = useState(false)
-  const [asesor, setAsesor] = useState('Asesor Brekto')
-  const [asesorMail, setAsesorMail] = useState('')
-  const [asesorTel, setAsesorTel] = useState('')
   const previewRef = useRef<HTMLDivElement>(null)
+  // Asesor y cliente leen del store global. Se editan desde la pestaña Cotización (tarjeta "Datos del Documento").
+  const asesor = global.asesor_nombre
+  const asesorMail = global.asesor_correo
+  const asesorTel = global.asesor_telefono
 
   const toggleSeccion = (id: string) =>
     setSecciones((prev) => {
@@ -428,23 +429,20 @@ export default function ModuloPDF() {
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">👤 Datos del Documento</h3>
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Solo lectura · edita en pestaña Cotización</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="form-group">
-              <label className="form-label">Asesor comercial</label>
-              <input className="form-input" value={asesor} onChange={(e) => setAsesor(e.target.value)} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, lineHeight: 1.5 }}>
+            <div>
+              <span style={{ color: 'var(--color-text-muted)' }}>Asesor: </span>
+              <strong>{asesor || '—'}</strong>
+              {asesorMail && <span style={{ color: 'var(--color-text-muted)' }}> · {asesorMail}</span>}
+              {asesorTel && <span style={{ color: 'var(--color-text-muted)' }}> · {asesorTel}</span>}
             </div>
-            <div className="form-group">
-              <label className="form-label">Mail asesor (opcional)</label>
-              <input className="form-input" value={asesorMail} onChange={(e) => setAsesorMail(e.target.value)} placeholder="ejemplo@brekto.cl" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Teléfono asesor (opcional)</label>
-              <input className="form-input" value={asesorTel} onChange={(e) => setAsesorTel(e.target.value)} placeholder="+56 9 1234 5678" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Inversionista</label>
-              <input className="form-input" value={global.inversionista_nombre} readOnly style={{ opacity: 0.7 }} />
+            <div>
+              <span style={{ color: 'var(--color-text-muted)' }}>Cliente: </span>
+              <strong>{global.inversionista_nombre || '—'}</strong>
+              {global.inversionista_correo && <span style={{ color: 'var(--color-text-muted)' }}> · {global.inversionista_correo}</span>}
+              {global.inversionista_rut && <span style={{ color: 'var(--color-text-muted)' }}> · RUT {global.inversionista_rut}</span>}
             </div>
           </div>
         </div>
