@@ -554,7 +554,7 @@ create policy "inmobiliarias_select_anon"
                   style={{ opacity: proyectoSelId && !modoManual ? 1 : 0.65 }}
                 />
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
-                  Búsqueda automática. Sin texto = stock general. Si escribís unidad, el filtro de tipología se desactiva hasta que borres el campo.
+                  Búsqueda automática. Sin texto = stock general. Si escribes unidad, el filtro de tipología se desactiva hasta que borres el campo.
                 </span>
                 {buscandoUnidades && proyectoSelId && !modoManual && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
@@ -579,7 +579,7 @@ create policy "inmobiliarias_select_anon"
                 ) : busquedaUnidadActiva ? (
                   <>
                     <select className="form-select" disabled value="">
-                      <option value="">No aplica mientras buscás por unidad arriba</option>
+                      <option value="">No aplica mientras buscas por unidad arriba</option>
                     </select>
                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
                       Borrá el texto en &quot;Buscar unidad&quot; para volver a filtrar por tipología.
@@ -599,7 +599,7 @@ create policy "inmobiliarias_select_anon"
                       padding: '10px 0',
                     }}
                   >
-                    {errorTipologias}. Podés buscar unidad sin filtrar por tipología.
+                    {errorTipologias}. Puedes buscar unidad sin filtrar por tipología.
                   </p>
                 ) : tipologias.length === 0 ? (
                   <p
@@ -724,7 +724,9 @@ create policy "inmobiliarias_select_anon"
           {[
             { label: 'Proyecto', key: 'proyecto_nombre', type: 'text' },
             { label: 'Comuna', key: 'proyecto_comuna', type: 'text' },
-            { label: 'Barrio', key: 'proyecto_barrio', type: 'text' },
+            // Barrio queda siempre editable: no viene del stock real (campo libre comercial)
+            // y normalmente el asesor lo completa a mano aunque la fuente sea Stock.
+            { label: 'Barrio', key: 'proyecto_barrio', type: 'text', alwaysEditable: true },
             { label: 'N° Unidad', key: 'unidad_numero', type: 'text' },
             { label: 'Tipología', key: 'unidad_tipologia', type: 'text' },
             { label: 'Sup. Interior m²', key: 'unidad_sup_interior_m2', type: 'number' },
@@ -732,30 +734,36 @@ create policy "inmobiliarias_select_anon"
             { label: 'Sup. Total m²', key: 'unidad_sup_total_m2', type: 'number' },
             { label: 'Orientación', key: 'unidad_orientacion', type: 'text' },
             { label: 'Fecha entrega', key: 'unidad_entrega', type: 'text' },
-          ].map(({ label, key, type }) => (
-            <div className="form-group" key={key}>
-              <label className="form-label">{label}</label>
-              {type === 'number' ? (
-                <FormattedNumberInput
-                  className="form-input"
-                  value={Number(((p as unknown) as Record<string, string | number>)[key]) || 0}
-                  readOnly={!modoManual}
-                  onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
-                  decimals={2}
-                  style={{ opacity: opacidadAntecedentesStock }}
-                />
-              ) : (
-                <input
-                  type={type}
-                  className="form-input"
-                  value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
-                  readOnly={!modoManual}
-                  onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
-                  style={{ opacity: opacidadAntecedentesStock }}
-                />
-              )}
-            </div>
-          ))}
+          ].map((field) => {
+            const { label, key, type } = field
+            const alwaysEditable = 'alwaysEditable' in field ? field.alwaysEditable : false
+            const isReadOnly = alwaysEditable ? false : !modoManual
+            const fieldOpacity = alwaysEditable ? 1 : opacidadAntecedentesStock
+            return (
+              <div className="form-group" key={key}>
+                <label className="form-label">{label}</label>
+                {type === 'number' ? (
+                  <FormattedNumberInput
+                    className="form-input"
+                    value={Number(((p as unknown) as Record<string, string | number>)[key]) || 0}
+                    readOnly={isReadOnly}
+                    onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
+                    decimals={2}
+                    style={{ opacity: fieldOpacity }}
+                  />
+                ) : (
+                  <input
+                    type={type}
+                    className="form-input"
+                    value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
+                    readOnly={isReadOnly}
+                    onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
+                    style={{ opacity: fieldOpacity }}
+                  />
+                )}
+              </div>
+            )
+          })}
 
           <SectionHeading>DETALLE PRECIOS Y DESCUENTOS</SectionHeading>
           <p

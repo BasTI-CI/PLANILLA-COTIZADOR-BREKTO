@@ -89,6 +89,45 @@ function BrektoIsotipo({ size = 48 }: { size?: number }) {
   )
 }
 
+/**
+ * Wordmark "Brekto" con degradado corporativo, renderizado como SVG inline.
+ * Usar SVG <text fill="url(#grad)"> garantiza que html2canvas y todos los
+ * navegadores lo capturen correctamente — `background-clip: text` no era
+ * confiable (el degradado se pintaba como rectángulo, no como texto).
+ */
+function BrektoWordmark({ fontSize = 22 }: { fontSize?: number }) {
+  // Aproximación del ancho de "Brekto" en Outfit 800 — el textLength estabiliza el render.
+  const width = fontSize * 4.5
+  const height = fontSize * 1.2
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ display: 'inline-block', verticalAlign: 'baseline', overflow: 'visible' }}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <linearGradient id={`brekto-wordmark-${fontSize}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#0a3b8a" />
+          <stop offset="55%" stopColor="#1bbcd8" />
+          <stop offset="100%" stopColor="#00ff9c" />
+        </linearGradient>
+      </defs>
+      <text
+        x="0"
+        y={fontSize * 0.95}
+        fontFamily="Outfit, sans-serif"
+        fontSize={fontSize}
+        fontWeight={800}
+        fill={`url(#brekto-wordmark-${fontSize})`}
+      >
+        Brekto
+      </text>
+    </svg>
+  )
+}
+
 function PdfPage({
   orientation,
   children,
@@ -150,16 +189,151 @@ const Grid = ({ cols, children }: { cols: number; children: React.ReactNode }) =
 )
 
 // ----- Renderers por bloque (a–g) ya existentes, ahora separados en 2 hojas -----
+// ----- Componentes de tabla estilo "Cotización Capital Inteligente" -----
+// Cabecera azul oscuro corporativo + texto blanco bold; filas con bordes sutiles;
+// `Row destacada` para totales/subtotales en azul oscuro con texto blanco.
+
+function TablaCot({ headers, children, columnAlignments }: {
+  headers: string[]
+  children: React.ReactNode
+  /** "left" | "right" por columna; default: primera = left, resto = right */
+  columnAlignments?: ('left' | 'right' | 'center')[]
+}) {
+  const align = (i: number) => columnAlignments?.[i] ?? (i === 0 ? 'left' : 'right')
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 8 }}>
+      <thead>
+        <tr style={{ background: T.accent }}>
+          {headers.map((h, i) => (
+            <th
+              key={i}
+              style={{
+                padding: '7px 10px',
+                color: '#ffffff',
+                textAlign: align(i),
+                fontSize: 9.5,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  )
+}
+
+function Row({ cells, destacada = false, columnAlignments }: {
+  cells: (string | number | React.ReactNode)[]
+  destacada?: boolean
+  columnAlignments?: ('left' | 'right' | 'center')[]
+}) {
+  const align = (i: number) => columnAlignments?.[i] ?? (i === 0 ? 'left' : 'right')
+  return (
+    <tr style={{ background: destacada ? T.accent : '#ffffff', borderBottom: `1px solid ${T.border}` }}>
+      {cells.map((c, i) => (
+        <td
+          key={i}
+          style={{
+            padding: '6px 10px',
+            color: destacada ? '#ffffff' : T.text,
+            fontSize: 11,
+            fontWeight: destacada ? 700 : 400,
+            textAlign: align(i),
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {c}
+        </td>
+      ))}
+    </tr>
+  )
+}
+
+// ----- Banda superior tipo "Cotización Capital Inteligente" -----
+// Banda full-width azul oscuro con título centrado + subtítulo + fecha/UF.
+// Isotipo arriba a la derecha sobre fondo blanco redondeado para contraste.
+// Usar siempre dentro de un PdfPage con innerPadding="14mm" para que los
+// `margin: -14mm` extiendan la banda hasta los bordes de la hoja.
+
+function CotBandaSuperior({ c, letra, hojaLabel, uf }: {
+  c: Cotizacion
+  letra: string
+  hojaLabel: string
+  uf: number
+}) {
+  const propiedad = c.propiedad
+  const fechaStr = new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+  return (
+    <div
+      style={{
+        background: T.accent,
+        color: '#ffffff',
+        padding: '16px 20px 14px',
+        marginLeft: '-14mm',
+        marginRight: '-14mm',
+        marginTop: '-14mm',
+        marginBottom: 14,
+        position: 'relative',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Hoja N de 2 — esquina superior izquierda */}
+      <div style={{ position: 'absolute', top: 12, left: 18, fontSize: 9, opacity: 0.75, letterSpacing: '0.05em', fontWeight: 600 }}>
+        {hojaLabel.toUpperCase()}
+      </div>
+      {/* Isotipo — esquina superior derecha sobre tarjeta blanca */}
+      <div style={{ position: 'absolute', top: 10, right: 16, background: '#ffffff', borderRadius: 6, padding: 4, lineHeight: 0 }}>
+        <BrektoIsotipo size={28} />
+      </div>
+      <div style={{ textAlign: 'center', paddingTop: 12 }}>
+        <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 22, fontWeight: 800, marginBottom: 4, letterSpacing: '0.02em' }}>
+          COTIZACIÓN {letra}
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.95, marginBottom: 4 }}>
+          {propiedad.proyecto_nombre}
+          {propiedad.proyecto_comuna && <span> · {propiedad.proyecto_comuna}</span>}
+          {propiedad.unidad_numero && <span> · Unidad {propiedad.unidad_numero}</span>}
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.85 }}>
+          {fechaStr}&nbsp;&nbsp;·&nbsp;&nbsp;1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ----- Sub-bloque de "Información del…" (3 cards en row tipo Resumen General) -----
+function InfoCard({ titulo, lineas }: { titulo: string; lineas: { label: string; value: string }[] }) {
+  return (
+    <div style={{ padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: '#ffffff' }}>
+      <div style={{ background: T.accent, color: '#ffffff', padding: '4px 8px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'inline-block' }}>
+        {titulo}
+      </div>
+      {lineas.map((l, i) => (
+        <div key={i} style={{ fontSize: 10.5, marginBottom: 2, color: T.text, lineHeight: 1.35 }}>
+          <span style={{ color: T.muted, fontWeight: 600 }}>{l.label}: </span>
+          <span style={{ color: T.text }}>{l.value || '—'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function renderBloqueAE(
   c: Cotizacion,
   letra: string,
   r: ResultadosCotizacion,
-  uf: number
+  uf: number,
+  global: { asesor_nombre: string; asesor_correo: string; inversionista_nombre: string; inversionista_correo: string; inversionista_rut: string }
 ) {
   const propiedad = c.propiedad
   const pie = c.pie
   const hip = c.hipotecario
-  const rent = c.rentabilidad
   const pcDeptoUf = precioCompraDeptoUf(propiedad)
   const descuentoTotalUf = propiedad.descuento_uf
   const beneficioUf = r.beneficio_inmobiliario_uf
@@ -170,68 +344,142 @@ function renderBloqueAE(
   const desg = calcularMontosDesglosePieClp(r.valor_escritura_uf, pie, uf)
   const tieneEst = propiedad.estacionamiento_uf > 0
   const tieneBod = propiedad.bodega_uf > 0
-  const renta = rent.tipo_renta
-  const capRate = renta === 'corta' ? r.arriendo.airbnb_cap_rate_anual_pct : r.arriendo.cap_rate_anual_pct
 
   return (
     <>
-      <CotHeader c={c} letra={letra} hojaLabel="Hoja 1 de 2" />
+      <CotBandaSuperior c={c} letra={letra} hojaLabel="Hoja 1 de 2" uf={uf} />
 
-      <SubTitle>a · Detalle de precios y descuentos</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Precio lista" value={fmtUF(propiedad.precio_lista_uf)} sub={fmtCLP(propiedad.precio_lista_uf * uf)} />
-        <StatBox label="Descuento total" value={fmtUF(descuentoTotalUf)} sub={fmtCLP(descuentoTotalUf * uf)} />
-        <StatBox label="Descuento por bono (BI)" value={fmtUF(beneficioUf)} sub={fmtCLP(beneficioUf * uf)} />
-        <StatBox label="Precio de compra depto" value={fmtUF(pcDeptoUf)} sub={fmtCLP(pcDeptoUf * uf)} />
+      <SubTitle>Resumen general</SubTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+        <InfoCard
+          titulo="Información del Proyecto"
+          lineas={[
+            { label: 'Inmobiliaria', value: propiedad.proyecto_nombre || '—' },
+            { label: 'Proyecto', value: propiedad.proyecto_nombre || '—' },
+            { label: 'Unidad', value: propiedad.unidad_numero || '—' },
+            { label: 'Tipo de Entrega', value: propiedad.unidad_entrega || '—' },
+          ]}
+        />
+        <InfoCard
+          titulo="Información del Cliente"
+          lineas={[
+            { label: 'Nombre', value: global.inversionista_nombre || '—' },
+            { label: 'RUT', value: global.inversionista_rut || '—' },
+            { label: 'Email', value: global.inversionista_correo || '—' },
+          ]}
+        />
+        <InfoCard
+          titulo="Información del Ejecutivo"
+          lineas={[
+            { label: 'Nombre', value: global.asesor_nombre || '—' },
+            { label: 'Email', value: global.asesor_correo || '—' },
+          ]}
+        />
+      </div>
+
+      <SubTitle>A · Detalle de la unidad</SubTitle>
+      <TablaCot
+        headers={['Número', 'Piso', 'Orientación', 'Sup. interior', 'Sup. terraza', 'Sup. total']}
+        columnAlignments={['center', 'center', 'center', 'right', 'right', 'right']}
+      >
+        <Row
+          columnAlignments={['center', 'center', 'center', 'right', 'right', 'right']}
+          cells={[
+            propiedad.unidad_numero || '—',
+            '—',
+            propiedad.unidad_orientacion || '—',
+            `${propiedad.unidad_sup_interior_m2} m²`,
+            `${propiedad.unidad_sup_terraza_m2} m²`,
+            `${propiedad.unidad_sup_total_m2} m²`,
+          ]}
+        />
+      </TablaCot>
+
+      {/* B · Detalle de Precio de compra y Valor de Escrituración
+            Orden lógico: lista → descuentos → PRECIO COMPRA depto → BI → VALOR ESCRITURACIÓN depto → adicionales → VALOR ESCRITURACIÓN total. */}
+      <SubTitle>B · Detalle de Precio de compra y Valor de Escrituración</SubTitle>
+      <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
+        <Row cells={['Precio Lista Depto', fmtUF(propiedad.precio_lista_uf), fmtCLP(propiedad.precio_lista_uf * uf)]} />
+        <Row cells={['(−) Descuento', `−${fmtUF(descuentoTotalUf)}`, `−${fmtCLP(descuentoTotalUf * uf)}`]} />
+        <Row cells={[
+          `(−) Descuento bonificación (${(propiedad.bono_max_pct * 100).toFixed(2)}%)`,
+          `−${fmtUF(propiedad.precio_neto_uf * propiedad.bono_max_pct)}`,
+          `−${fmtCLP(propiedad.precio_neto_uf * propiedad.bono_max_pct * uf)}`,
+        ]} />
+        <Row destacada cells={['PRECIO COMPRA (depto)', fmtUF(pcDeptoUf), fmtCLP(pcDeptoUf * uf)]} />
+        <Row cells={[`(+) Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`, `+${fmtUF(beneficioUf)}`, `+${fmtCLP(beneficioUf * uf)}`]} />
+        <Row destacada cells={['VALOR ESCRITURACIÓN DEPARTAMENTO', fmtUF(r.valor_tasacion_uf), fmtCLP(r.valor_tasacion_uf * uf)]} />
         {tieneEst && (
-          <StatBox label="Estacionamiento" value={fmtUF(propiedad.estacionamiento_uf)} sub={fmtCLP(propiedad.estacionamiento_uf * uf)} />
+          <Row cells={[
+            `(+) Estacionamiento${propiedad.bono_aplica_adicionales ? ' · con BI' : ''}`,
+            `+${fmtUF(propiedad.estacionamiento_uf)}`,
+            `+${fmtCLP(propiedad.estacionamiento_uf * uf)}`,
+          ]} />
         )}
-        {tieneBod && <StatBox label="Bodega" value={fmtUF(propiedad.bodega_uf)} sub={fmtCLP(propiedad.bodega_uf * uf)} />}
-        <StatBox label="Bono pie" value={`${(pctRestoBonoPie * 100).toFixed(2)}% · ${fmtUF(bonoPie)}`} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Precio de compra total" value={fmtUF(r.precio_compra_total_uf)} sub={fmtCLP(r.precio_compra_total_uf * uf)} />
-        <StatBox label="Valor de escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
-      </Grid>
+        {tieneBod && (
+          <Row cells={[
+            `(+) Bodega${propiedad.bono_aplica_adicionales ? ' · con BI' : ''}`,
+            `+${fmtUF(propiedad.bodega_uf)}`,
+            `+${fmtCLP(propiedad.bodega_uf * uf)}`,
+          ]} />
+        )}
+        {(tieneEst || tieneBod) && (
+          <Row destacada cells={['VALOR ESCRITURACIÓN TOTAL', fmtUF(r.valor_escritura_uf), fmtCLP(r.valor_escritura_uf * uf)]} />
+        )}
+      </TablaCot>
 
-      <SubTitle>b · Pie y forma de pago</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Pie a documentar" value={`${(pie.pie_pct * 100).toFixed(2)}% · ${fmtUF(r.pie_total_uf)}`} sub={fmtCLP(r.pie_total_clp)} />
-        <StatBox label="Bono pie" value={fmtUF(bonoPie)} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Pie a pagar" value={fmtUF(piePagar)} sub={fmtCLP(piePagar * uf)} />
-        <StatBox label="Upfront" value={`${(pie.upfront_pct * 100).toFixed(2)}%`} sub={fmtCLP(desg.monto_upfront_clp)} />
-        <StatBox label="% antes / N cuotas" value={`${(pie.cuotas_antes_entrega_pct * 100).toFixed(2)}% · ${pie.cuotas_antes_entrega_n}`} sub={`${fmtCLP(desg.monto_cuota_antes_clp)} / cuota`} />
-        <StatBox label="% después / N cuotas" value={`${(pie.cuotas_despues_entrega_pct * 100).toFixed(2)}% · ${pie.cuotas_despues_entrega_n}`} sub={`${fmtCLP(desg.monto_cuota_despues_clp)} / cuota`} />
-        <StatBox label="Cuotón %" value={`${(pie.cuoton_pct * 100).toFixed(2)}%`} />
-        <StatBox label="Cuotas cuotón" value={`${pie.cuoton_n_cuotas}`} sub={`${fmtCLP(desg.monto_cuoton_clp)} / cuota`} />
-        <StatBox label="Cuotas totales pie" value={`${pie.pie_n_cuotas_total}`} />
-      </Grid>
+      {/* C · Pie y Forma de Pago
+            Configuración del pie a partir del valor escrituración: documentado → bono → a pagar,
+            y desglose de cuotas (upfront / antes / después / cuotón / total). */}
+      <SubTitle>C · Pie y Forma de Pago</SubTitle>
+      <TablaCot headers={['Concepto', 'Detalle', 'Valor UF', 'Valor CLP']}>
+        <Row cells={['Pie a documentar', `${(pie.pie_pct * 100).toFixed(2)}% sobre escrituración`, fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
+        <Row cells={[
+          'Bonificación inmobiliaria (bono pie)',
+          `${(pctRestoBonoPie * 100).toFixed(2)}%`,
+          fmtUF(bonoPie),
+          fmtCLP(bonoPie * uf),
+        ]} />
+        <Row destacada cells={['PIE A PAGAR (cliente)', '—', fmtUF(piePagar), fmtCLP(piePagar * uf)]} />
+        <Row cells={[
+          'Upfront',
+          `${(pie.upfront_pct * 100).toFixed(2)}%`,
+          fmtUF(r.valor_escritura_uf * pie.upfront_pct),
+          fmtCLP(desg.monto_upfront_clp),
+        ]} />
+        <Row cells={[
+          `Cuotas antes entrega (${pie.cuotas_antes_entrega_n})`,
+          `${(pie.cuotas_antes_entrega_pct * 100).toFixed(2)}%`,
+          `${fmtUF((r.valor_escritura_uf * pie.cuotas_antes_entrega_pct) / Math.max(pie.cuotas_antes_entrega_n, 1))} / cuota`,
+          `${fmtCLP(desg.monto_cuota_antes_clp)} / cuota`,
+        ]} />
+        <Row cells={[
+          `Cuotas después entrega (${pie.cuotas_despues_entrega_n})`,
+          `${(pie.cuotas_despues_entrega_pct * 100).toFixed(2)}%`,
+          `${fmtUF((r.valor_escritura_uf * pie.cuotas_despues_entrega_pct) / Math.max(pie.cuotas_despues_entrega_n, 1))} / cuota`,
+          `${fmtCLP(desg.monto_cuota_despues_clp)} / cuota`,
+        ]} />
+        <Row cells={['Total cuotas pie', `${pie.pie_n_cuotas_total} cuotas`, '—', '—']} />
+        <Row cells={[
+          `Cuotón (${pie.cuoton_n_cuotas} cuotas)`,
+          `${(pie.cuoton_pct * 100).toFixed(2)}%`,
+          `${fmtUF((r.valor_escritura_uf * pie.cuoton_pct) / Math.max(pie.cuoton_n_cuotas, 1))} / cuota`,
+          `${fmtCLP(desg.monto_cuoton_clp)} / cuota`,
+        ]} />
+      </TablaCot>
 
-      <SubTitle>c · Resumen financiero</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Precio de compra total" value={fmtUF(r.precio_compra_total_uf)} sub={fmtCLP(r.precio_compra_total_uf * uf)} />
-        <StatBox label="Valor de escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
-        <StatBox label="Pie a documentar" value={fmtUF(r.pie_total_uf)} sub={fmtCLP(r.pie_total_clp)} />
-        <StatBox label="Bono pie" value={fmtUF(bonoPie)} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Pie a pagar" value={fmtUF(piePagar)} sub={fmtCLP(piePagar * uf)} />
-        <StatBox label="Monto crédito" value={fmtUF(r.hipotecario.monto_credito_uf)} sub={fmtCLP(r.hipotecario.monto_credito_clp)} />
-      </Grid>
-
-      <SubTitle>d · Crédito sobre valor de escrituración</SubTitle>
-      <Grid cols={4}>
-        <StatBox label="Monto crédito" value={fmtUF(r.hipotecario.monto_credito_uf)} sub={fmtCLP(r.hipotecario.monto_credito_clp)} />
-        <StatBox label="Tasa anual" value={`${(hip.hipotecario_tasa_anual * 100).toFixed(2)}%`} />
-        <StatBox label="Plazo" value={`${hip.hipotecario_plazo_anos} años`} />
-        <StatBox label="Dividendo mensual" value={fmtUF(r.hipotecario.dividendo_total_uf)} sub={fmtCLP(r.hipotecario.dividendo_total_clp)} />
-      </Grid>
-
-      <SubTitle>e · Rentabilidad</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Plusvalía anual" value={`${(rent.plusvalia_anual_pct * 100).toFixed(2)}%`} sub={`${rent.plusvalia_anos} años`} />
-        <StatBox label="Precio venta proyectado" value={fmtUF(r.plusvalia.precio_venta_5anos_uf)} sub={fmtCLP(r.plusvalia.precio_venta_5anos_uf * uf)} />
-        <StatBox label="Ganancia venta" value={fmtUF(r.plusvalia.ganancia_venta_uf)} sub={fmtCLP(r.plusvalia.ganancia_venta_clp)} />
-        <StatBox label={renta === 'corta' ? 'Cap rate AirBnB anual' : 'Cap rate anual'} value={`${(capRate * 100).toFixed(2)}%`} />
-        <StatBox label={renta === 'corta' ? 'Ingreso neto renta corta' : 'Arriendo neto mensual'} value={fmtCLP(r.arriendo.ingreso_neto_flujo_clp)} />
-        <StatBox label="Resultado mensual (arr − div)" value={fmtCLP(r.arriendo.resultado_mensual_clp)} valueColor={r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad} />
-      </Grid>
+      {/* D · Escrituración y Crédito Hipotecario — datos clave del crédito y dividendo. */}
+      <SubTitle>D · Escrituración y Crédito Hipotecario</SubTitle>
+      <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
+        <Row cells={['Valor de escrituración', fmtUF(r.valor_escritura_uf), fmtCLP(r.valor_escritura_uf * uf)]} />
+        <Row cells={['Pie total a documentar', fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
+        <Row destacada cells={[
+          `Crédito (${(hip.hipotecario_aprobacion_pct * 100).toFixed(0)}% · ${(hip.hipotecario_tasa_anual * 100).toFixed(2)}% anual · ${hip.hipotecario_plazo_anos} años)`,
+          fmtUF(r.hipotecario.monto_credito_uf),
+          fmtCLP(r.hipotecario.monto_credito_clp),
+        ]} />
+        <Row destacada cells={['Dividendo mensual', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
+      </TablaCot>
     </>
   )
 }
@@ -240,67 +488,73 @@ function renderBloqueFG(
   c: Cotizacion,
   letra: string,
   r: ResultadosCotizacion,
-  uf: number
+  uf: number,
+  global: { asesor_nombre: string; asesor_correo: string; inversionista_nombre: string; inversionista_correo: string; inversionista_rut: string }
 ) {
-  const renta = c.rentabilidad.tipo_renta
+  const rent = c.rentabilidad
+  const renta = rent.tipo_renta
   const promociones = leyendaPromociones(c.promociones)
 
   return (
     <>
-      <CotHeader c={c} letra={letra} hojaLabel="Hoja 2 de 2" />
+      <CotBandaSuperior c={c} letra={letra} hojaLabel="Hoja 2 de 2" uf={uf} />
 
-      <SubTitle>f · Resultado</SubTitle>
-      <Grid cols={4}>
-        <StatBox label="Precio de compra total" value={fmtUF(r.precio_compra_total_uf)} sub={fmtCLP(r.precio_compra_total_uf * uf)} />
-        <StatBox label="Valor tasación depto" value={fmtUF(r.valor_tasacion_uf)} sub={fmtCLP(r.valor_tasacion_uf * uf)} />
-        <StatBox label="Valor escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
-        <StatBox label="Pie total" value={fmtUF(r.pie_total_uf)} sub={fmtCLP(r.pie_total_clp)} />
-        <StatBox label="Monto crédito" value={fmtUF(r.hipotecario.monto_credito_uf)} sub={fmtCLP(r.hipotecario.monto_credito_clp)} />
-        <StatBox label="Dividendo mensual" value={fmtUF(r.hipotecario.dividendo_total_uf)} sub={fmtCLP(r.hipotecario.dividendo_total_clp)} />
-        <StatBox
-          label={renta === 'corta' ? 'Ingreso neto renta corta' : 'Arriendo neto mensual'}
-          value={fmtCLP(r.arriendo.ingreso_neto_flujo_clp)}
-          sub={`vs div: ${fmtCLP(r.arriendo.resultado_mensual_clp)} / mes`}
-          valueColor={r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad}
-        />
-      </Grid>
+      {/* E · Resultado de la cotización — outputs clave para decisión del cliente. */}
+      <SubTitle>E · Resultado de la cotización</SubTitle>
+      <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
+        <Row cells={[
+          `Plusvalía proyectada (${(rent.plusvalia_anual_pct * 100).toFixed(2)}% anual · ${rent.plusvalia_anos} años)`,
+          fmtUF(r.plusvalia.precio_venta_5anos_uf),
+          fmtCLP(r.plusvalia.precio_venta_5anos_uf * uf),
+        ]} />
+        <Row destacada cells={[
+          'Ganancia por venta del departamento',
+          fmtUF(r.plusvalia.ganancia_venta_uf),
+          fmtCLP(r.plusvalia.ganancia_venta_clp),
+        ]} />
+        <Row cells={[
+          'Dividendo (mensual)',
+          fmtUF(r.hipotecario.dividendo_total_uf),
+          fmtCLP(r.hipotecario.dividendo_total_clp),
+        ]} />
+        <Row cells={[
+          renta === 'corta' ? 'Arriendo proyectado renta corta (mensual)' : 'Arriendo proyectado mensual',
+          '—',
+          fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
+        ]} />
+        <Row destacada cells={[
+          'Resultado mensual (arriendo − dividendo)',
+          '—',
+          fmtCLP(r.arriendo.resultado_mensual_clp),
+        ]} />
+      </TablaCot>
 
-      <SubTitle>g · Promociones de la cotización</SubTitle>
+      <SubTitle>F · Promociones de la Cotización</SubTitle>
       {promociones.length > 0 ? (
-        <ul style={{ margin: 0, paddingLeft: 18, color: T.text, fontSize: 12.5, lineHeight: 1.6 }}>
+        <TablaCot headers={['Promoción aplicable']} columnAlignments={['left']}>
           {promociones.map((txt) => (
-            <li key={txt}>{txt}</li>
+            <Row key={txt} columnAlignments={['left']} cells={[txt]} />
           ))}
-        </ul>
+        </TablaCot>
       ) : (
-        <div style={{ fontSize: 12, color: T.muted, fontStyle: 'italic', padding: '4px 0' }}>
+        <div style={{ fontSize: 11, color: T.muted, fontStyle: 'italic', padding: '6px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: '#ffffff' }}>
           Sin promociones aplicables para esta cotización.
         </div>
       )}
-    </>
-  )
-}
 
-function CotHeader({ c, letra, hojaLabel }: { c: Cotizacion; letra: string; hojaLabel: string }) {
-  return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ background: T.accent, color: '#fff', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
-            COTIZACIÓN {letra}
-          </div>
-          <span style={{ fontSize: 17, fontWeight: 700, color: T.text, fontFamily: 'Outfit, sans-serif' }}>
-            {c.propiedad.proyecto_nombre}
-          </span>
-          <span style={{ color: T.muted, fontSize: 12 }}>· {c.propiedad.proyecto_comuna}</span>
+      <div style={{ marginTop: 14, padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 6 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: T.accent, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+          Política de Cotización y Reserva
         </div>
-        <span style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: '0.04em' }}>{hojaLabel}</span>
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>
-        Unidad <strong style={{ color: T.text }}>{c.propiedad.unidad_numero}</strong>
-        {' · '}{c.propiedad.unidad_tipologia}
-        {' · '}{c.propiedad.unidad_sup_total_m2} m²
-        {' · '}Entrega: {c.propiedad.unidad_entrega}
+        <div style={{ fontSize: 9.5, color: T.text, lineHeight: 1.5 }}>
+          La información detallada en esta cotización es referencial y será tratada como un borrador hasta que se realice
+          una reserva formal. Antecedentes de precio, descuentos, condiciones y disponibilidad están sujetos a cambios sin
+          previo aviso. La cotización no garantiza la disponibilidad de la unidad ni la vigencia de los términos ofrecidos
+          hasta que se concrete la reserva.
+          {' '}<strong>Asesor:</strong> {global.asesor_nombre || '—'}
+          {global.asesor_correo && <span> · {global.asesor_correo}</span>}
+          {' '}<strong style={{ marginLeft: 8 }}>Cliente:</strong> {global.inversionista_nombre || '—'}
+        </div>
       </div>
     </>
   )
@@ -545,19 +799,19 @@ export default function ModuloPDF() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <BrektoIsotipo size={48} />
                 <div>
-                  <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 800, fontSize: 22, color: T.text }}>
-                    <span
-                      style={{
-                        backgroundImage: BREKTO_TEXT_GRADIENT,
-                        WebkitBackgroundClip: 'text',
-                        backgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        color: 'transparent',
-                      }}
-                    >
-                      Brekto
-                    </span>{' '}
-                    Inversiones
+                  <div
+                    style={{
+                      fontFamily: 'Outfit, sans-serif',
+                      fontWeight: 800,
+                      fontSize: 22,
+                      color: T.text,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <BrektoWordmark fontSize={22} />
+                    <span>Inversiones</span>
                   </div>
                   <div style={{ fontSize: 11, color: T.muted }}>Proyección de resultado de Inversión Inmobiliaria</div>
                 </div>
@@ -743,7 +997,7 @@ export default function ModuloPDF() {
                   <XAxis dataKey="semestre" tick={{ fontSize: 9, fill: T.muted }} label={{ value: 'Semestre', position: 'bottom', fontSize: 9, fill: T.muted }} />
                   <YAxis tick={{ fontSize: 9, fill: T.muted }} tickFormatter={(v) => v.toLocaleString('es-CL')} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="patrimonioUf" stroke={T.gold} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="patrimonioUf" stroke={T.gold} strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>
               </PdfChartCard>
 
@@ -816,10 +1070,10 @@ export default function ModuloPDF() {
           return (
             <div key={`cot-${letra}-wrapper`} style={{ display: 'contents' }}>
               <PdfPage orientation="portrait" innerPadding="14mm">
-                {renderBloqueAE(c, letra, r, uf)}
+                {renderBloqueAE(c, letra, r, uf, global)}
               </PdfPage>
               <PdfPage orientation="portrait" innerPadding="14mm">
-                {renderBloqueFG(c, letra, r, uf)}
+                {renderBloqueFG(c, letra, r, uf, global)}
               </PdfPage>
             </div>
           )

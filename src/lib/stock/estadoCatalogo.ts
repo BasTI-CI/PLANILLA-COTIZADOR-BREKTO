@@ -1,6 +1,6 @@
 /**
  * Normalización de `estado` en tablas de catálogo (proyectos / inmobiliarias).
- * Ajustá la lista si en tu BD usás otros valores.
+ * Ajusta la lista si en tu BD usas otros valores.
  */
 export function esEstadoActivoCatalogo(estado: unknown): boolean {
   const t = String(estado ?? '')
