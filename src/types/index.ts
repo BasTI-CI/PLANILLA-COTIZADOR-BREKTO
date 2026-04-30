@@ -36,6 +36,10 @@ export interface PromocionesCotizacion {
   promo_gastos_operacionales: boolean
   /** Leyenda fija si está marcado. */
   comentario_devolucion_iva: boolean
+  /** Gift Card al cliente. Si está activo, el monto se ingresa en `gift_card_cliente_clp`. */
+  gift_card_cliente: boolean
+  /** Monto en CLP de la Gift Card. Solo se considera si `gift_card_cliente = true`. */
+  gift_card_cliente_clp: number
 }
 
 export const DEFAULT_PROMOCIONES: PromocionesCotizacion = {
@@ -47,6 +51,8 @@ export const DEFAULT_PROMOCIONES: PromocionesCotizacion = {
   credito_aval: false,
   promo_gastos_operacionales: false,
   comentario_devolucion_iva: false,
+  gift_card_cliente: false,
+  gift_card_cliente_clp: 0,
 }
 
 export interface DatosPropiedad {

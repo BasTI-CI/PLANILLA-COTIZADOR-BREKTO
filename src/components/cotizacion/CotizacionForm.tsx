@@ -246,12 +246,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   const promos = cot.promociones ?? DEFAULT_PROMOCIONES
 
+  // Solo flags booleanos. `gift_card_cliente` también es bool, pero al lado lleva un
+  // input CLP que solo se activa cuando el checkbox está marcado (ver render más abajo).
   const PROMO_ITEMS: { key: keyof PromocionesCotizacion; label: string }[][] = [
     [
       { key: 'arriendo_garantizado', label: 'Arriendo garantizado' },
       { key: 'kit_arriendo', label: 'Kit de arriendo' },
       { key: 'kit_inversionista', label: 'Kit de inversionista' },
       { key: 'credito_pie_institucion', label: 'Crédito pie con institución financiera' },
+      { key: 'gift_card_cliente', label: 'Gift Card cliente' },
     ],
     [
       { key: 'bono_amoblado', label: 'Bono amoblado' },
@@ -684,28 +687,72 @@ create policy "inmobiliarias_select_anon"
         >
           {PROMO_ITEMS.map((col, ci) => (
             <div key={ci} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {col.map(({ key, label }) => (
-                <label
-                  key={key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 10,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    lineHeight: 1.35,
-                    userSelect: 'none',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!promos[key]}
-                    onChange={(e) => setPromociones(cotizacionId, { [key]: e.target.checked })}
-                    style={{ marginTop: 3, flexShrink: 0 }}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+              {col.map(({ key, label }) => {
+                const isGiftCard = key === 'gift_card_cliente'
+                const giftCardActivo = !!promos.gift_card_cliente
+                // Para gift card, alinear label + input al centro vertical (input es más alto que línea de texto).
+                // El resto de promos sigue con alineación al inicio (texto puede ocupar 2 líneas).
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: isGiftCard ? 'center' : 'flex-start',
+                      gap: 10,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: isGiftCard ? 'center' : 'flex-start',
+                        gap: 10,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        lineHeight: 1.35,
+                        userSelect: 'none',
+                        flex: isGiftCard ? '0 0 auto' : '1 1 auto',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!promos[key]}
+                        onChange={(e) => setPromociones(cotizacionId, { [key]: e.target.checked })}
+                        style={{ marginTop: isGiftCard ? 0 : 3, flexShrink: 0 }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                    {isGiftCard && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          flex: '1 1 auto',
+                          minWidth: 0,
+                          maxWidth: 180,
+                          opacity: giftCardActivo ? 1 : 0.5,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 600 }}>$</span>
+                        <FormattedNumberInput
+                          className="form-input"
+                          value={promos.gift_card_cliente_clp ?? 0}
+                          readOnly={!giftCardActivo}
+                          onChange={(val) => setPromociones(cotizacionId, { gift_card_cliente_clp: val })}
+                          decimals={0}
+                          placeholder="0"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            textAlign: 'right',
+                            cursor: giftCardActivo ? 'text' : 'not-allowed',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>

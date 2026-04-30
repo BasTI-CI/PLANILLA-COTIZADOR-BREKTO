@@ -47,7 +47,7 @@ const subTitleStyle: React.CSSProperties = {
   marginBottom: 4,
 }
 
-const StatBox = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
+const StatBox = ({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) => (
   <div
     style={{
       padding: '5px 8px',
@@ -59,7 +59,7 @@ const StatBox = ({ label, value, sub }: { label: string; value: string; sub?: st
     <div style={{ fontSize: 8, color: T.muted, marginBottom: 1, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
       {label}
     </div>
-    <div style={{ fontSize: 11, fontWeight: 700, color: T.text, lineHeight: 1.2 }}>{value}</div>
+    <div style={{ fontSize: 11, fontWeight: 700, color: valueColor ?? T.text, lineHeight: 1.2 }}>{value}</div>
     {sub && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{sub}</div>}
   </div>
 )
@@ -87,17 +87,43 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const pie = cot.pie
   const hip = cot.hipotecario
 
+  // Cálculos derivados — algunos no tienen helper directo en motor
   const pcDeptoUf = precioCompraDeptoUf(propiedad)
   const descuentoTotalUf = propiedad.descuento_uf
-  const beneficioUf = r.beneficio_inmobiliario_uf
+  const pctDescuento = propiedad.precio_lista_uf > 0
+    ? (descuentoTotalUf / propiedad.precio_lista_uf) * 100
+    : 0
+  const bonoMaxPct = propiedad.bono_max_pct
+  const descuentoBonoUf = propiedad.precio_neto_uf * bonoMaxPct  // monto del descuento por bono (sobre precio neto)
+  const beneficioUf = r.beneficio_inmobiliario_uf  // BI sobre tasación (depto)
+  // SUBTOTAL = depto post-descuentos + adicionales (sin BI). Igual a precio_compra_total_uf por construcción.
+  const subtotalUf = r.precio_compra_total_uf
+  // BONIFICACIÓN AL PIE (B) = delta entre subtotal y valor escrituración. Por construcción del motor:
+  // valor_escritura - precio_compra_total = beneficio inmobiliario sobre la base (con/sin BI repercutido en adicionales).
+  const bonificacionAlPieUf = r.valor_escritura_uf - r.precio_compra_total_uf
+  const valorFinalUf = r.valor_escritura_uf
+
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
   const piePagar = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pie)
-  const pctRestoBonoPie =
-    pie.pie_pct - pie.upfront_pct - pie.cuotas_antes_entrega_pct - pie.cuotas_despues_entrega_pct - pie.cuoton_pct
   const desg = calcularMontosDesglosePieClp(r.valor_escritura_uf, pie, uf)
   const tieneEst = propiedad.estacionamiento_uf > 0
   const tieneBod = propiedad.bodega_uf > 0
   const promociones = leyendaPromociones(cot)
+  const cuotonTotalClp = desg.monto_cuoton_clp * Math.max(pie.cuoton_n_cuotas, 1) // monto total tramo cuotón
+
+  const headerColStyle: React.CSSProperties = {
+    fontSize: 10,
+    color: T.text,
+    lineHeight: 1.4,
+  }
+  const headerLabelStyle: React.CSSProperties = {
+    fontSize: 8.5,
+    color: T.muted,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: 2,
+  }
 
   return (
     <div
@@ -108,57 +134,60 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         background: '#ffffff',
         color: T.text,
         boxSizing: 'border-box',
-        padding: '12mm',
+        padding: '11mm 12mm',
         overflow: 'hidden',
         fontFamily: 'Inter, Helvetica, Arial, sans-serif',
         position: 'relative',
       }}
     >
-      {/* HEADER: isotipo izq, datos centro, fecha+UF der */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${T.border}` }}>
-        <img src={brektoIsotipoUrl} width={42} height={42} alt="Brekto" style={{ objectFit: 'contain', display: 'block', flexShrink: 0 }} />
-
-        <div style={{ flex: 1, fontSize: 9, lineHeight: 1.4, color: T.text, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
-          <div>
-            <span style={{ color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Asesor: </span>
-            <strong>{global.asesor_nombre || '—'}</strong>
-            {global.asesor_correo && <span style={{ color: T.muted }}> · {global.asesor_correo}</span>}
-          </div>
-          <div>
-            <span style={{ color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cliente: </span>
-            <strong>{global.inversionista_nombre || '—'}</strong>
-            {global.inversionista_correo && <span style={{ color: T.muted }}> · {global.inversionista_correo}</span>}
-            {global.inversionista_rut && <span style={{ color: T.muted }}> · RUT {global.inversionista_rut}</span>}
-          </div>
-          <div>
-            <span style={{ color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Inmob.: </span>
-            <strong>{inmobiliariaNombre || propiedad.proyecto_nombre || '—'}</strong>
-          </div>
-          <div>
-            <span style={{ color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Proyecto: </span>
-            <strong>{proyectoNombre || propiedad.proyecto_nombre || '—'}</strong>
-            {propiedad.proyecto_comuna && <span style={{ color: T.muted }}> · {propiedad.proyecto_comuna}</span>}
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Unidad: </span>
-            <strong>{propiedad.unidad_numero || '—'}</strong>
-            <span style={{ color: T.muted }}> · {propiedad.unidad_tipologia} · {propiedad.unidad_sup_total_m2} m²</span>
-          </div>
-        </div>
-
-        <div style={{ textAlign: 'right', fontSize: 9, color: T.muted, lineHeight: 1.4, flexShrink: 0 }}>
-          <div>{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-          <div style={{ fontWeight: 700, color: T.text }}>1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      {/* Fecha + UF — esquina superior DERECHA absoluta, sobre el header */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '11mm',
+          right: '12mm',
+          textAlign: 'right',
+          fontSize: 9,
+          color: T.muted,
+          lineHeight: 1.4,
+        }}
+      >
+        <div>{new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        <div style={{ fontWeight: 700, color: T.text }}>
+          1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
       </div>
 
-      {/* Badge de cotización */}
+      {/* HEADER: 2 columnas — Asesor (izq) / Cliente (der) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, paddingBottom: 6, paddingRight: 80, borderBottom: `1px solid ${T.border}` }}>
+        <div style={headerColStyle}>
+          <div style={headerLabelStyle}>Asesor</div>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>{global.asesor_nombre || '—'}</div>
+          {global.asesor_correo && <div style={{ color: T.muted, fontSize: 9.5 }}>{global.asesor_correo}</div>}
+        </div>
+        <div style={headerColStyle}>
+          <div style={headerLabelStyle}>Cliente</div>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>{global.inversionista_nombre || '—'}</div>
+          {global.inversionista_correo && <div style={{ color: T.muted, fontSize: 9.5 }}>{global.inversionista_correo}</div>}
+          {global.inversionista_rut && <div style={{ color: T.muted, fontSize: 9.5 }}>RUT: {global.inversionista_rut}</div>}
+        </div>
+      </div>
+
+      {/* Sub-header: Inmobiliaria — Proyecto · Comuna */}
+      <div style={{ padding: '5px 0 6px', borderBottom: `1px solid ${T.border}`, fontSize: 9.5, color: T.text, marginBottom: 6 }}>
+        <strong>{inmobiliariaNombre || propiedad.proyecto_nombre || '—'}</strong>
+        <span style={{ color: T.muted }}> &nbsp;—&nbsp; </span>
+        <strong>{proyectoNombre || propiedad.proyecto_nombre || '—'}</strong>
+        {propiedad.proyecto_comuna && <span style={{ color: T.muted }}> · {propiedad.proyecto_comuna}</span>}
+      </div>
+
+      {/* Badge de uso interno */}
       <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
         COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC
       </div>
 
-      {/* a) Antecedentes de la propiedad */}
-      <SubTitle>a · Antecedentes de la propiedad</SubTitle>
+      {/* A. Antecedentes de la propiedad */}
+      <SubTitle>A · Antecedentes de la propiedad</SubTitle>
       <Grid cols={4}>
         <StatBox label="Unidad" value={propiedad.unidad_numero || '—'} />
         <StatBox label="Tipología" value={propiedad.unidad_tipologia || '—'} />
@@ -166,76 +195,96 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         <StatBox label="Orientación" value={propiedad.unidad_orientacion || '—'} sub={`Entrega: ${propiedad.unidad_entrega || '—'}`} />
       </Grid>
 
-      {/* b) Detalle precios y descuentos */}
-      <SubTitle>b · Detalle de precios y descuentos</SubTitle>
-      <Grid cols={3}>
+      {/* B. Detalle precios y descuentos — flujo izq→der: Lista → (−Descuentos) → SUBTOTAL → (+Bonif al pie) → VALOR FINAL */}
+      <SubTitle>B · Detalle precios y descuentos</SubTitle>
+      <Grid cols={6}>
         <StatBox label="Precio lista" value={fmtUF(propiedad.precio_lista_uf)} sub={fmtCLP(propiedad.precio_lista_uf * uf)} />
-        <StatBox label="Descuento total" value={fmtUF(descuentoTotalUf)} sub={fmtCLP(descuentoTotalUf * uf)} />
-        <StatBox label="Descuento por bono (BI)" value={fmtUF(beneficioUf)} sub={fmtCLP(beneficioUf * uf)} />
-        <StatBox label="Precio compra depto" value={fmtUF(pcDeptoUf)} sub={fmtCLP(pcDeptoUf * uf)} />
-        {tieneEst && (
-          <StatBox label="Estacionamiento" value={fmtUF(propiedad.estacionamiento_uf)} sub={fmtCLP(propiedad.estacionamiento_uf * uf)} />
-        )}
-        {tieneBod && <StatBox label="Bodega" value={fmtUF(propiedad.bodega_uf)} sub={fmtCLP(propiedad.bodega_uf * uf)} />}
-        <StatBox label="Bono pie" value={`${(pctRestoBonoPie * 100).toFixed(2)}% · ${fmtUF(bonoPie)}`} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Precio compra total" value={fmtUF(r.precio_compra_total_uf)} sub={fmtCLP(r.precio_compra_total_uf * uf)} />
-        <StatBox label="Valor escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
+        <StatBox label={`Descuento (${pctDescuento.toFixed(2)}%)`} value={fmtUF(descuentoTotalUf)} sub={fmtCLP(descuentoTotalUf * uf)} />
+        <StatBox label={`Desc. por Bono (${(bonoMaxPct * 100).toFixed(2)}%)`} value={fmtUF(descuentoBonoUf)} sub={fmtCLP(descuentoBonoUf * uf)} />
+        <StatBox
+          label="SUBTOTAL"
+          value={fmtUF(subtotalUf)}
+          sub={[
+            fmtCLP(subtotalUf * uf),
+            `Depto ${fmtUF(pcDeptoUf)}${tieneEst ? ` · Est ${fmtUF(propiedad.estacionamiento_uf)}` : ''}${tieneBod ? ` · Bod ${fmtUF(propiedad.bodega_uf)}` : ''}`,
+          ].join(' · ')}
+        />
+        <StatBox label="Bonificación al pie" value={fmtUF(bonificacionAlPieUf)} sub={fmtCLP(bonificacionAlPieUf * uf)} />
+        <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
 
-      {/* c) Pie y forma de pago */}
-      <SubTitle>c · Pie y forma de pago</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Pie a documentar" value={`${(pie.pie_pct * 100).toFixed(2)}% · ${fmtUF(r.pie_total_uf)}`} sub={fmtCLP(r.pie_total_clp)} />
-        <StatBox label="Bono pie" value={fmtUF(bonoPie)} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Pie a pagar" value={fmtUF(piePagar)} sub={fmtCLP(piePagar * uf)} />
-        <StatBox label="Upfront" value={`${(pie.upfront_pct * 100).toFixed(2)}%`} sub={fmtCLP(desg.monto_upfront_clp)} />
+      {/* C.1 Pie a documentar (referencia, antes del desglose) */}
+      <SubTitle>C.1 · Pie y forma de pago</SubTitle>
+      <Grid cols={1}>
         <StatBox
-          label="% antes / N cuotas"
-          value={`${(pie.cuotas_antes_entrega_pct * 100).toFixed(2)}% · ${pie.cuotas_antes_entrega_n}`}
+          label={`Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          value={fmtUF(r.pie_total_uf)}
+          sub={fmtCLP(r.pie_total_clp)}
+        />
+      </Grid>
+
+      {/* C.2 Pie a pagar + desglose horizontal de cuotas */}
+      <SubTitle>C.2 · Desglose de pago pie restante</SubTitle>
+      <Grid cols={1}>
+        <StatBox
+          label="Pie a pagar en plan de pago"
+          value={fmtUF(piePagar)}
+          sub={fmtCLP(piePagar * uf)}
+          valueColor={T.accent}
+        />
+      </Grid>
+      <Grid cols={4}>
+        <StatBox
+          label={`Upfront (${(pie.upfront_pct * 100).toFixed(2)}%)`}
+          value={fmtUF(r.valor_escritura_uf * pie.upfront_pct)}
+          sub={fmtCLP(desg.monto_upfront_clp)}
+        />
+        <StatBox
+          label={`${(pie.cuotas_antes_entrega_pct * 100).toFixed(2)}% antes / ${pie.cuotas_antes_entrega_n} cuotas`}
+          value={fmtUF((r.valor_escritura_uf * pie.cuotas_antes_entrega_pct) / Math.max(pie.cuotas_antes_entrega_n, 1))}
           sub={`${fmtCLP(desg.monto_cuota_antes_clp)} / cuota`}
         />
         <StatBox
-          label="% después / N cuotas"
-          value={`${(pie.cuotas_despues_entrega_pct * 100).toFixed(2)}% · ${pie.cuotas_despues_entrega_n}`}
+          label={`${(pie.cuotas_despues_entrega_pct * 100).toFixed(2)}% después / ${pie.cuotas_despues_entrega_n} cuotas`}
+          value={fmtUF((r.valor_escritura_uf * pie.cuotas_despues_entrega_pct) / Math.max(pie.cuotas_despues_entrega_n, 1))}
           sub={`${fmtCLP(desg.monto_cuota_despues_clp)} / cuota`}
         />
-        <StatBox label="Cuotón %" value={`${(pie.cuoton_pct * 100).toFixed(2)}%`} />
-        <StatBox label="Cuotas cuotón" value={`${pie.cuoton_n_cuotas}`} sub={`${fmtCLP(desg.monto_cuoton_clp)} / cuota`} />
-        <StatBox label="Cuotas totales pie" value={`${pie.pie_n_cuotas_total}`} />
+        <StatBox
+          label={`Cuotón contra escritura (${(pie.cuoton_pct * 100).toFixed(2)}%) / ${pie.cuoton_n_cuotas} cuota${pie.cuoton_n_cuotas > 1 ? 's' : ''}`}
+          value={fmtUF(r.valor_escritura_uf * pie.cuoton_pct)}
+          sub={pie.cuoton_n_cuotas > 1
+            ? `Total ${fmtCLP(cuotonTotalClp)} · ${fmtCLP(desg.monto_cuoton_clp)} / cuota`
+            : `Total ${fmtCLP(cuotonTotalClp)}`
+          }
+        />
       </Grid>
 
-      {/* d) Tasación y Escrituración */}
-      <SubTitle>d · Tasación y escrituración</SubTitle>
+      {/* D. Resumen financiero — UF en bold, $ en gris */}
+      <SubTitle>D · Resumen financiero</SubTitle>
       <Grid cols={3}>
-        <StatBox label="Valor tasación depto" value={fmtUF(r.valor_tasacion_uf)} sub={fmtCLP(r.valor_tasacion_uf * uf)} />
-        <StatBox label="Beneficio inmobiliario" value={`${(propiedad.bono_descuento_pct * 100).toFixed(2)}%`} sub={`${fmtUF(beneficioUf)} · ${fmtCLP(beneficioUf * uf)}`} />
-        <StatBox label="Valor escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
+        <StatBox
+          label="VALOR ESCRITURACIÓN (100%)"
+          value={fmtUF(r.valor_escritura_uf)}
+          sub={fmtCLP(r.valor_escritura_uf * uf)}
+          valueColor={T.accent}
+        />
+        <StatBox
+          label={`PIE A DOCUMENTAR (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          value={fmtUF(r.pie_total_uf)}
+          sub={fmtCLP(r.pie_total_clp)}
+        />
+        <StatBox
+          label={`MONTO DE CRÉDITO (${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}%)`}
+          value={fmtUF(r.hipotecario.monto_credito_uf)}
+          sub={fmtCLP(r.hipotecario.monto_credito_clp)}
+          valueColor={T.accent}
+        />
       </Grid>
 
-      {/* e) Resumen Financiero */}
-      <SubTitle>e · Resumen financiero</SubTitle>
-      <Grid cols={3}>
-        <StatBox label="Precio compra total" value={fmtUF(r.precio_compra_total_uf)} sub={fmtCLP(r.precio_compra_total_uf * uf)} />
-        <StatBox label="Valor escrituración" value={fmtUF(r.valor_escritura_uf)} sub={fmtCLP(r.valor_escritura_uf * uf)} />
-        <StatBox label="Pie a documentar" value={fmtUF(r.pie_total_uf)} sub={fmtCLP(r.pie_total_clp)} />
-        <StatBox label="Bono pie" value={fmtUF(bonoPie)} sub={fmtCLP(bonoPie * uf)} />
-        <StatBox label="Pie a pagar" value={fmtUF(piePagar)} sub={fmtCLP(piePagar * uf)} />
-        <StatBox label="Monto crédito" value={fmtUF(r.hipotecario.monto_credito_uf)} sub={fmtCLP(r.hipotecario.monto_credito_clp)} />
-      </Grid>
-
-      {/* f) Crédito sobre valor de Escrituración */}
-      <SubTitle>f · Crédito sobre valor de escrituración</SubTitle>
-      <Grid cols={4}>
-        <StatBox label="Monto crédito" value={fmtUF(r.hipotecario.monto_credito_uf)} sub={fmtCLP(r.hipotecario.monto_credito_clp)} />
-        <StatBox label="Tasa anual" value={`${(hip.hipotecario_tasa_anual * 100).toFixed(2)}%`} />
-        <StatBox label="Plazo" value={`${hip.hipotecario_plazo_anos} años`} />
-        <StatBox label="Dividendo mensual" value={fmtUF(r.hipotecario.dividendo_total_uf)} sub={fmtCLP(r.hipotecario.dividendo_total_clp)} />
-      </Grid>
-
-      {/* g) Promociones */}
-      <SubTitle>g · Promociones de la cotización</SubTitle>
+      {/* E. Promociones */}
+      <SubTitle>E · Promociones de la cotización</SubTitle>
       {promociones.length > 0 ? (
-        <ul style={{ margin: 0, paddingLeft: 16, color: T.text, fontSize: 10, lineHeight: 1.5 }}>
+        <ul style={{ margin: 0, paddingLeft: 16, color: T.text, fontSize: 10, lineHeight: 1.5, columns: promociones.length > 4 ? 2 : 1 }}>
           {promociones.map((txt) => (
             <li key={txt}>{txt}</li>
           ))}
@@ -249,7 +298,9 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
 
 // ----- Promociones helper (mismo array que ModuloPDF, replicado para no acoplar) -----
 
-const PROMO_LABELS: [keyof Cotizacion['promociones'], string][] = [
+type PromoKey = Exclude<keyof Cotizacion['promociones'], 'gift_card_cliente_clp'>
+
+const PROMO_LABELS: [PromoKey, string][] = [
   ['arriendo_garantizado', 'Arriendo garantizado'],
   ['kit_arriendo', 'Kit de arriendo'],
   ['kit_inversionista', 'Kit de inversionista'],
@@ -258,12 +309,19 @@ const PROMO_LABELS: [keyof Cotizacion['promociones'], string][] = [
   ['credito_aval', 'Crédito aval'],
   ['promo_gastos_operacionales', 'Promoción gastos operacionales'],
   ['comentario_devolucion_iva', 'Comentario: "Cliente hará devolución de IVA"'],
+  ['gift_card_cliente', 'Gift Card cliente'],
 ]
 
 function leyendaPromociones(cot: Cotizacion): string[] {
   const p = cot.promociones
   if (!p) return []
-  return PROMO_LABELS.filter(([k]) => p[k]).map(([, label]) => label)
+  return PROMO_LABELS.filter(([k]) => p[k] === true).map(([k, label]) => {
+    if (k === 'gift_card_cliente') {
+      const monto = p.gift_card_cliente_clp || 0
+      return monto > 0 ? `${label} — $${monto.toLocaleString('es-CL')}` : label
+    }
+    return label
+  })
 }
 
 // ----- Exporter público -----

@@ -31,7 +31,9 @@ const T = {
   bad: '#b91c1c',
 }
 
-const PROMO_LABELS: [keyof PromocionesCotizacion, string][] = [
+// Labels para las promociones tipo bool. `gift_card_cliente` se maneja aparte
+// porque lleva un monto CLP asociado que se inyecta en la leyenda.
+const PROMO_LABELS: [Exclude<keyof PromocionesCotizacion, 'gift_card_cliente_clp'>, string][] = [
   ['arriendo_garantizado', 'Arriendo garantizado'],
   ['kit_arriendo', 'Kit de arriendo'],
   ['kit_inversionista', 'Kit de inversionista'],
@@ -40,11 +42,18 @@ const PROMO_LABELS: [keyof PromocionesCotizacion, string][] = [
   ['credito_aval', 'Crédito aval'],
   ['promo_gastos_operacionales', 'Promoción gastos operacionales'],
   ['comentario_devolucion_iva', 'Comentario: "Cliente hará devolución de IVA"'],
+  ['gift_card_cliente', 'Gift Card cliente'],
 ]
 
 function leyendaPromociones(p: PromocionesCotizacion | undefined): string[] {
   const base = { ...DEFAULT_PROMOCIONES, ...p }
-  return PROMO_LABELS.filter(([k]) => base[k]).map(([, label]) => label)
+  return PROMO_LABELS.filter(([k]) => base[k] === true).map(([k, label]) => {
+    if (k === 'gift_card_cliente') {
+      const monto = base.gift_card_cliente_clp || 0
+      return monto > 0 ? `${label} — $${monto.toLocaleString('es-CL')}` : label
+    }
+    return label
+  })
 }
 
 const SECCIONES = [
