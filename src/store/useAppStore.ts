@@ -97,6 +97,10 @@ export const useAppStore = create<AppState & AppActions>()(
     global: {
       inversionista_nombre: '',
       inversionista_rut: '',
+      inversionista_correo: '',
+      asesor_nombre: 'Asesor Brekto',
+      asesor_correo: '',
+      asesor_telefono: '',
       cotizacion_fecha: new Date().toISOString().split('T')[0],
       uf_valor_clp: 39_836,
     },

@@ -9,6 +9,12 @@
 export interface DatosGlobales {
   inversionista_nombre: string
   inversionista_rut: string
+  /** Correo del cliente / inversionista. Usado en header del PDF operacional (UGC / Jira). */
+  inversionista_correo: string
+  /** Datos del asesor comercial — usados en ambos exportables (comercial y operacional). */
+  asesor_nombre: string
+  asesor_correo: string
+  asesor_telefono: string
   cotizacion_fecha: string         // ISO date string
   uf_valor_clp: number             // valor UF del día (API o manual)
 }
@@ -30,6 +36,10 @@ export interface PromocionesCotizacion {
   promo_gastos_operacionales: boolean
   /** Leyenda fija si está marcado. */
   comentario_devolucion_iva: boolean
+  /** Gift Card al cliente. Si está activo, el monto se ingresa en `gift_card_cliente_clp`. */
+  gift_card_cliente: boolean
+  /** Monto en CLP de la Gift Card. Solo se considera si `gift_card_cliente = true`. */
+  gift_card_cliente_clp: number
 }
 
 export const DEFAULT_PROMOCIONES: PromocionesCotizacion = {
@@ -41,6 +51,8 @@ export const DEFAULT_PROMOCIONES: PromocionesCotizacion = {
   credito_aval: false,
   promo_gastos_operacionales: false,
   comentario_devolucion_iva: false,
+  gift_card_cliente: false,
+  gift_card_cliente_clp: 0,
 }
 
 export interface DatosPropiedad {

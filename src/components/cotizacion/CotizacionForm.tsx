@@ -13,6 +13,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
 import type { DatosPropiedad, PromocionesCotizacion } from '@/types'
 import { DEFAULT_PROMOCIONES } from '@/types'
+import { exportarPdfOperacional } from '@/components/pdf/PdfOperacional'
 
 interface Props { cotizacionId: number }
 
@@ -76,9 +77,10 @@ const rowGridStyle: CSSProperties = {
 
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
-    cotizaciones, global, setPropiedad, setPie, setHipotecario, setRentabilidad,
+    cotizaciones, global, setGlobal, setPropiedad, setPie, setHipotecario, setRentabilidad,
     setModoFuente, cargarDesdeSupabase, setPromociones,
   } = useAppStore()
+  const [generandoOperacional, setGenerandoOperacional] = useState(false)
 
   const cot = cotizaciones[cotizacionId]
   const p = cot?.propiedad
@@ -244,12 +246,15 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   const promos = cot.promociones ?? DEFAULT_PROMOCIONES
 
+  // Solo flags booleanos. `gift_card_cliente` también es bool, pero al lado lleva un
+  // input CLP que solo se activa cuando el checkbox está marcado (ver render más abajo).
   const PROMO_ITEMS: { key: keyof PromocionesCotizacion; label: string }[][] = [
     [
       { key: 'arriendo_garantizado', label: 'Arriendo garantizado' },
       { key: 'kit_arriendo', label: 'Kit de arriendo' },
       { key: 'kit_inversionista', label: 'Kit de inversionista' },
       { key: 'credito_pie_institucion', label: 'Crédito pie con institución financiera' },
+      { key: 'gift_card_cliente', label: 'Gift Card cliente' },
     ],
     [
       { key: 'bono_amoblado', label: 'Bono amoblado' },
@@ -306,6 +311,74 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   return (
     <div className="fade-in cotizacion-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── Datos del Documento (asesor + cliente, globales — se sincronizan en todas las cotizaciones) ── */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">📄 Datos del Documento</h3>
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+            Compartido entre cotizaciones · usado en exportables PDF
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="form-group">
+            <label className="form-label">Asesor (nombre)</label>
+            <input
+              className="form-input"
+              value={global.asesor_nombre}
+              onChange={(e) => setGlobal({ asesor_nombre: e.target.value })}
+              placeholder="Asesor Brekto"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Asesor (correo)</label>
+            <input
+              className="form-input"
+              type="email"
+              value={global.asesor_correo}
+              onChange={(e) => setGlobal({ asesor_correo: e.target.value })}
+              placeholder="ejemplo@brekto.cl"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Asesor (teléfono)</label>
+            <input
+              className="form-input"
+              value={global.asesor_telefono}
+              onChange={(e) => setGlobal({ asesor_telefono: e.target.value })}
+              placeholder="+56 9 1234 5678"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente / inversionista (nombre)</label>
+            <input
+              className="form-input"
+              value={global.inversionista_nombre}
+              onChange={(e) => setGlobal({ inversionista_nombre: e.target.value })}
+              placeholder="Nombre completo del cliente"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente (correo)</label>
+            <input
+              className="form-input"
+              type="email"
+              value={global.inversionista_correo}
+              onChange={(e) => setGlobal({ inversionista_correo: e.target.value })}
+              placeholder="cliente@ejemplo.cl"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cliente (RUT)</label>
+            <input
+              className="form-input"
+              value={global.inversionista_rut}
+              onChange={(e) => setGlobal({ inversionista_rut: e.target.value })}
+              placeholder="11.111.111-1"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* ── Switch Datos desde Stock / Manual ── */}
       <div className="card">
@@ -484,7 +557,7 @@ create policy "inmobiliarias_select_anon"
                   style={{ opacity: proyectoSelId && !modoManual ? 1 : 0.65 }}
                 />
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
-                  Búsqueda automática. Sin texto = stock general. Si escribís unidad, el filtro de tipología se desactiva hasta que borres el campo.
+                  Búsqueda automática. Sin texto = stock general. Si escribes unidad, el filtro de tipología se desactiva hasta que borres el campo.
                 </span>
                 {buscandoUnidades && proyectoSelId && !modoManual && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
@@ -509,7 +582,7 @@ create policy "inmobiliarias_select_anon"
                 ) : busquedaUnidadActiva ? (
                   <>
                     <select className="form-select" disabled value="">
-                      <option value="">No aplica mientras buscás por unidad arriba</option>
+                      <option value="">No aplica mientras buscas por unidad arriba</option>
                     </select>
                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', lineHeight: 1.35 }}>
                       Borrá el texto en &quot;Buscar unidad&quot; para volver a filtrar por tipología.
@@ -529,7 +602,7 @@ create policy "inmobiliarias_select_anon"
                       padding: '10px 0',
                     }}
                   >
-                    {errorTipologias}. Podés buscar unidad sin filtrar por tipología.
+                    {errorTipologias}. Puedes buscar unidad sin filtrar por tipología.
                   </p>
                 ) : tipologias.length === 0 ? (
                   <p
@@ -614,28 +687,72 @@ create policy "inmobiliarias_select_anon"
         >
           {PROMO_ITEMS.map((col, ci) => (
             <div key={ci} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {col.map(({ key, label }) => (
-                <label
-                  key={key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 10,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    lineHeight: 1.35,
-                    userSelect: 'none',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!promos[key]}
-                    onChange={(e) => setPromociones(cotizacionId, { [key]: e.target.checked })}
-                    style={{ marginTop: 3, flexShrink: 0 }}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+              {col.map(({ key, label }) => {
+                const isGiftCard = key === 'gift_card_cliente'
+                const giftCardActivo = !!promos.gift_card_cliente
+                // Para gift card, alinear label + input al centro vertical (input es más alto que línea de texto).
+                // El resto de promos sigue con alineación al inicio (texto puede ocupar 2 líneas).
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: isGiftCard ? 'center' : 'flex-start',
+                      gap: 10,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: isGiftCard ? 'center' : 'flex-start',
+                        gap: 10,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        lineHeight: 1.35,
+                        userSelect: 'none',
+                        flex: isGiftCard ? '0 0 auto' : '1 1 auto',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!promos[key]}
+                        onChange={(e) => setPromociones(cotizacionId, { [key]: e.target.checked })}
+                        style={{ marginTop: isGiftCard ? 0 : 3, flexShrink: 0 }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                    {isGiftCard && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          flex: '1 1 auto',
+                          minWidth: 0,
+                          maxWidth: 180,
+                          opacity: giftCardActivo ? 1 : 0.5,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 600 }}>$</span>
+                        <FormattedNumberInput
+                          className="form-input"
+                          value={promos.gift_card_cliente_clp ?? 0}
+                          readOnly={!giftCardActivo}
+                          onChange={(val) => setPromociones(cotizacionId, { gift_card_cliente_clp: val })}
+                          decimals={0}
+                          placeholder="0"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            textAlign: 'right',
+                            cursor: giftCardActivo ? 'text' : 'not-allowed',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -654,7 +771,9 @@ create policy "inmobiliarias_select_anon"
           {[
             { label: 'Proyecto', key: 'proyecto_nombre', type: 'text' },
             { label: 'Comuna', key: 'proyecto_comuna', type: 'text' },
-            { label: 'Barrio', key: 'proyecto_barrio', type: 'text' },
+            // Barrio queda siempre editable: no viene del stock real (campo libre comercial)
+            // y normalmente el asesor lo completa a mano aunque la fuente sea Stock.
+            { label: 'Barrio', key: 'proyecto_barrio', type: 'text', alwaysEditable: true },
             { label: 'N° Unidad', key: 'unidad_numero', type: 'text' },
             { label: 'Tipología', key: 'unidad_tipologia', type: 'text' },
             { label: 'Sup. Interior m²', key: 'unidad_sup_interior_m2', type: 'number' },
@@ -662,30 +781,36 @@ create policy "inmobiliarias_select_anon"
             { label: 'Sup. Total m²', key: 'unidad_sup_total_m2', type: 'number' },
             { label: 'Orientación', key: 'unidad_orientacion', type: 'text' },
             { label: 'Fecha entrega', key: 'unidad_entrega', type: 'text' },
-          ].map(({ label, key, type }) => (
-            <div className="form-group" key={key}>
-              <label className="form-label">{label}</label>
-              {type === 'number' ? (
-                <FormattedNumberInput
-                  className="form-input"
-                  value={Number(((p as unknown) as Record<string, string | number>)[key]) || 0}
-                  readOnly={!modoManual}
-                  onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
-                  decimals={2}
-                  style={{ opacity: opacidadAntecedentesStock }}
-                />
-              ) : (
-                <input
-                  type={type}
-                  className="form-input"
-                  value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
-                  readOnly={!modoManual}
-                  onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
-                  style={{ opacity: opacidadAntecedentesStock }}
-                />
-              )}
-            </div>
-          ))}
+          ].map((field) => {
+            const { label, key, type } = field
+            const alwaysEditable = 'alwaysEditable' in field ? field.alwaysEditable : false
+            const isReadOnly = alwaysEditable ? false : !modoManual
+            const fieldOpacity = alwaysEditable ? 1 : opacidadAntecedentesStock
+            return (
+              <div className="form-group" key={key}>
+                <label className="form-label">{label}</label>
+                {type === 'number' ? (
+                  <FormattedNumberInput
+                    className="form-input"
+                    value={Number(((p as unknown) as Record<string, string | number>)[key]) || 0}
+                    readOnly={isReadOnly}
+                    onChange={(val) => setPropiedad(cotizacionId, { [key]: val } as Partial<DatosPropiedad>)}
+                    decimals={2}
+                    style={{ opacity: fieldOpacity }}
+                  />
+                ) : (
+                  <input
+                    type={type}
+                    className="form-input"
+                    value={((p as unknown) as Record<string, string | number>)[key] ?? ''}
+                    readOnly={isReadOnly}
+                    onChange={(e) => setPropiedad(cotizacionId, { [key]: e.target.value } as Partial<DatosPropiedad>)}
+                    style={{ opacity: fieldOpacity }}
+                  />
+                )}
+              </div>
+            )
+          })}
 
           <SectionHeading>DETALLE PRECIOS Y DESCUENTOS</SectionHeading>
           <p
@@ -1478,6 +1603,45 @@ create policy "inmobiliarias_select_anon"
           })()}
         </div>
       </div>
+
+      {cot.activa && (
+        <button
+          className="btn btn-lg"
+          disabled={generandoOperacional}
+          onClick={async () => {
+            setGenerandoOperacional(true)
+            try {
+              await exportarPdfOperacional({
+                cot,
+                global,
+                inmobiliariaNombre,
+                proyectoNombre,
+              })
+            } finally {
+              setGenerandoOperacional(false)
+            }
+          }}
+          style={{
+            width: '100%',
+            background: '#0d4d80',
+            color: '#fff',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            fontSize: 13,
+            padding: '12px 16px',
+            border: 'none',
+          }}
+        >
+          {generandoOperacional ? (
+            <>
+              <div className="loading-spinner" style={{ borderTopColor: '#fff' }} />
+              Generando PDF interno...
+            </>
+          ) : (
+            <>📎 IMPRIMIR PARA USO INTERNO JIRA — OPERACIONES — UGC</>
+          )}
+        </button>
+      )}
 
       {cot.activa && (
         <div className="card">

@@ -446,14 +446,17 @@ Pestaña **Flujo**; consolida cotizaciones `activa`. Entradas extra por unidad: 
 
 Para cada `mes = 1..60`:
 
-1. **Egreso pie:** suma por unidad activa de upfront (mes 1), cuotas antes en meses 1…nAntes, cuotas después en los meses siguientes según N, cuotón en 1…nCuotón — usando `calcularMontosDesglosePieClp(valor_escritura_uf, pie, UF)` y la misma geometría que el formulario.
-2. **Egreso dividendo − arriendo:** para cada unidad con `mes_entrega_flujo` definido y `mes > mes_entrega_flujo`, `max(0, dividendo_total_clp - ingreso_neto_flujo_clp)`; se suma entre activas.
-3. **`egreso = egreso_pie + egreso_da`**
-4. **`iva_este_mes`:** según §4.1 (automático o manual).
-5. `capital_inicio = capital_anterior + diversif_ahorro_mensual_clp - egreso + iva_este_mes`
-6. `rentabilizacion = round0(capital_inicio * diversif_tasa_mensual)`
-7. `capital_fin = capital_inicio + rentabilizacion`
-8. `ganancia_acumulada = round0(capital_fin - diversif_capital_inicial_clp)` (capital inicial **nominal** del formulario, sin restar gastos en el acumulado; los gastos ya reducen el punto de partida del loop).
+1. **Egreso pie (`egreso_pie_clp`):** suma por unidad activa de upfront (mes 1), cuotas antes en meses 1…nAntes, cuotas después en los meses siguientes según N, cuotón en 1…nCuotón — usando `calcularMontosDesglosePieClp(valor_escritura_uf, pie, UF)` y la misma geometría que el formulario.
+2. **Dividendo − arriendo (`dividendo_menos_arriendo_clp`) — con signo, sin clamp:** para cada unidad con `mes_entrega_flujo` definido y `mes > mes_entrega_flujo` (post-entrega), `dividendo_total_clp − ingreso_neto_flujo_clp`; se suma entre activas. Valor positivo = egreso neto (dividendo > arriendo); valor negativo = ingreso a caja (el excedente de arriendo cubre el dividendo y sobra). Se reporta en **columna propia** en la tabla 60m y resumen anual, separada de `egreso_pie_clp` (`sumaDividendoMenosArriendoPostEntrega` en `calculosDiversificacion.ts`).
+3. **`iva_este_mes`:** según §4.1 (automático o manual).
+4. **Rentabilización — modelo B (sobre saldo previo):** la base es el capital con el que arrancó el mes, **sin** incluir los movimientos del propio mes:
+   - `capital_inicio = capital_anterior` (= `capital_fin` del mes anterior; en el mes 1, el capital inicial efectivo definido arriba).
+   - `rentabilizacion = round0(capital_inicio × diversif_tasa_mensual)`.
+   
+   Implicación: ahorro, egreso pie, Div−Arr e IVA del mes `m` rentabilizan recién desde el mes `m+1`. Contrasta con el modelo A previo (rentabilidad sobre `capital_anterior + ahorro − egreso + iva`), ya retirado.
+5. **Cierre del mes:**
+   `capital_fin = capital_inicio + diversif_ahorro_mensual_clp − egreso_pie_clp − dividendo_menos_arriendo_clp + iva_este_mes + rentabilizacion`
+6. `ganancia_acumulada = round0(capital_fin − diversif_capital_inicial_clp)` (capital inicial **nominal** del formulario, sin restar gastos en el acumulado; los gastos ya reducen el punto de partida del loop).
 
 ---
 
