@@ -10,6 +10,23 @@
 - **Es la primera app que diseña.** Ajustar nivel de explicación: ser concreto y didáctico, evitar jerga que dé por entendida.
 - **Idioma: español chileno neutro.** No usar "vos", "tenés", "querés", "che", "mandame", "fijate". Preferir "tú", "tienes", "quieres", "mándame", "fíjate".
 - **Giovanni** es jefe/amigo que revisa código (NO referirse como "jefe" a secas).
+- **Sebastián Villaseca** es el **Ingeniero TI** que levanta a producción. Dueño del repo upstream `svillaseca-capitalinteligente/Cotizador-Multiple`. NO confundir con Bastián.
+
+## Flujo de trabajo (entregas)
+
+```
+Bastián (BasTI-CI/PLANILLA-COTIZADOR-BREKTO, rama Cotizador_Dev)
+       │  (avisa por mensaje + link a la rama)
+       ▼
+Sebastián Villaseca (svillaseca-capitalinteligente/Cotizador-Multiple, rama dev)
+       │  (revisa, integra, despliega)
+       ▼
+Producción
+```
+
+- **Bastián NO pushea directo** a `capitalti/dev`. Aunque GitHub no rechaza la conexión (vimos dry-run de `main` exitoso), se respeta el flujo formal vía mensaje a Sebastián.
+- **`BasTI-CI/PLANILLA-COTIZADOR-BREKTO` no es un fork registrado** del repo de Sebastián — es un repo independiente. Por eso GitHub no permite "Compare across forks" entre ambos. Para integrar, Sebastián debe agregar el repo de Bastián como remote en su clon, hacer fetch, y mergear `bastian/Cotizador_Dev` → `dev` localmente.
+- Cuando Sebastián integre cambios, Bastián sigue trabajando en `Cotizador_Dev` como siempre. Si Sebastián pide cambios, Bastián commitea más en `Cotizador_Dev`, pushea a `origin`, y le avisa que actualizó.
 
 ---
 
