@@ -202,6 +202,14 @@ Reglas del bloque ▶️ CORRE ESTO (complementan §0 "Bloques de comandos para 
 3. Después, una tabla **línea por línea** con qué hace cada comando, en lenguaje simple.
 4. Termina mostrando el resultado y se dice qué debería verse si salió bien.
 5. Lo que publica fuera del computador (push, deploy) va en un bloque **separado** de lo local.
+6. **Líneas cortas** (máx. ~70 caracteres): al copiar, las líneas largas se parten y el comando se
+   rompe. Un texto largo lo escribe el carril en un archivo fuera del proyecto (ej.
+   `.git/MSG_<tema>`) y el bloque solo lo referencia: `git commit -F .git/MSG_<tema>`.
+7. **Nunca heredoc** (`<<EOF`): con espacios al inicio, la terminal queda esperando en `heredoc>`.
+8. `git log`, `git diff` y `git show` van con `git --no-pager`, para no dejar la terminal en `:`.
+
+Estas reglas 6–8 salen de tres bloques rotos el 2026-10-15: un `git add` sin su último archivo, un
+heredoc que no cerró y un mensaje de commit partido en líneas.
 
 Los mensajes **entre carriles** (encargos, prompts, reportes) también abren con su etiqueta
 `🤖 <carril emisor> → <carril destino>`, así BR sabe de quién es cada texto que pega.
