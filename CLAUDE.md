@@ -4,6 +4,22 @@
 
 ---
 
+## 0. Antes de trabajar: carga tu carril
+
+Este proyecto se trabaja con un **equipo por carriles**: PM, PP (Postproducción), PG (Promptgen)
+y Code. Cada carril tiene su contexto versionado en `docs/contexto/`.
+
+- Si te abrieron con `/rol <nombre>`, ya lo cargaste.
+- Si no, corre `bash scripts/contexto.sh <rol> fetch` y lee `docs/contexto/contexto-comun.md` y
+  luego `docs/contexto/contexto-<rol>.md`.
+- **Si nadie te asignó un rol**, trabaja como siempre con las reglas de este archivo, pero
+  respeta: `docs/` lo mantiene solo el PM; push y merge solo con autorización de Bastián.
+
+**Precedencia**: el script (estado medido) → `contexto-comun.md` → `contexto-<rol>.md` → este
+archivo, salvo que una regla de este archivo sea más estricta.
+
+---
+
 ## Persona del usuario
 
 - **Bastián Rodríguez** — Ingeniero Físico, Prompt Engineer en Capital Inteligente.
