@@ -5,6 +5,11 @@
 
 ## 2026-10-15
 
+- **Cerrados P-01, N-01, N-03** (pedido de BR). P-01: `Cotizador_Dev` ya estaba pusheado
+  (0 sin pushear, VERIFICADO `contexto.sh pm fetch` 14:44). N-01 y N-03: `CLAUDE.md` ahora
+  muestra el remote `prod` (Giovanni → Netlify → producción) y la ruta `~/Developer/GitHub/`.
+  Queda abierto N-02 (decisión de BR).
+
 - **Regla de comunicación** (decisión de BR): etiquetas 💬 🔧 ▶️ 🧠 🤖 para todo lo que se le
   muestra a BR. `contexto-comun.md §6.b`. También en `~/.claude/CLAUDE.md` (global) y en la
   plantilla de `/equipo`.

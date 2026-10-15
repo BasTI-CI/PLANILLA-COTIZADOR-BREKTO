@@ -35,10 +35,17 @@ Bastián (BasTI-CI/PLANILLA-COTIZADOR-BREKTO, rama Cotizador_Dev)
        │  (avisa por mensaje + link a la rama)
        ▼
 Sebastián Villaseca (svillaseca-capitalinteligente/Cotizador-Multiple, rama dev)
-       │  (revisa, integra, despliega)
+       │  (revisa, integra dev → main, sube a producción)
        ▼
-Producción
+Giovanni (giovannimarisio/cotizadormultiple, rama main · remote `prod`)
+       │  (Netlify del equipo de Giovanni publica main)
+       ▼
+Producción: cotizadormultiple.brekto.com
 ```
+
+- **Producción NO se publica desde `capitalti`**, sino desde `giovannimarisio/cotizadormultiple`
+  (remote `prod`, solo lectura en este clon: push deshabilitado). Se usa solo para medir qué
+  está en producción (`git log prod/main..HEAD`). Verificado el 2026-10-14 (N-01).
 
 - **Bastián NO pushea directo** a `capitalti/dev`. Aunque GitHub no rechaza la conexión (vimos dry-run de `main` exitoso), se respeta el flujo formal vía mensaje a Sebastián.
 - **`BasTI-CI/PLANILLA-COTIZADOR-BREKTO` no es un fork registrado** del repo de Sebastián — es un repo independiente. Por eso GitHub no permite "Compare across forks" entre ambos. Para integrar, Sebastián debe agregar el repo de Bastián como remote en su clon, hacer fetch, y mergear `bastian/Cotizador_Dev` → `dev` localmente.
@@ -53,18 +60,20 @@ GitHub:
   ├── BasTI-CI/PLANILLA-COTIZADOR-BREKTO       ← el fork de Bastián (origin)
   │     ├── main               ← rama estable
   │     └── Cotizador_Dev      ← rama de trabajo activa
-  └── svillaseca-capitalinteligente/Cotizador-Multiple   ← repo upstream de Seba (capitalti)
+  ├── svillaseca-capitalinteligente/Cotizador-Multiple   ← repo upstream de Seba (capitalti)
+  └── giovannimarisio/cotizadormultiple                  ← producción (prod, solo lectura)
 
 Local:
-  └── ~/Documents/GitHub/PLANILLA-COTIZADOR-BREKTO/
+  └── ~/Developer/GitHub/PLANILLA-COTIZADOR-BREKTO/
         ├── origin    → BasTI-CI/PLANILLA-COTIZADOR-BREKTO
-        └── capitalti → svillaseca-capitalinteligente/Cotizador-Multiple
+        ├── capitalti → svillaseca-capitalinteligente/Cotizador-Multiple
+        └── prod      → giovannimarisio/cotizadormultiple (push deshabilitado)
 ```
 
 **Reglas:**
 1. **Trabajar siempre en `Cotizador_Dev`.** No commitear directo a `main`.
 2. **`git push` por defecto va a `origin/Cotizador_Dev` (su fork).** Verificar antes de pushear con `git rev-parse --abbrev-ref @{u}` si hay duda.
-3. **Nunca pushear a `capitalti`** salvo instrucción explícita; ese remote existe solo para fetch del upstream.
+3. **Nunca pushear a `capitalti`** salvo instrucción explícita; ese remote existe solo para fetch del upstream. **Nunca pushear a `prod`** (está bloqueado a propósito).
 4. **`main` se actualiza vía PR o FF merge desde `Cotizador_Dev`.** Bastián puede tener Cursor abierto en otro clone (`SebaVilla/Cotizador-Multiple`); confirmar cuál antes de asumir.
 
 ---
@@ -257,7 +266,7 @@ Dos proyectos en cuenta **Capital_Desarrollo**:
 1. `git status -sb && git branch -vv` — verificar rama y estado.
 2. ¿Hay PRs abiertos? `gh pr list` (si `gh` instalado) o revisar manualmente. Existe un PR `Cotizador_Dev → main` en el fork de Bastián que se actualiza con cada push.
 3. Si Bastián describe el repo: contrastar contra realidad. Su mapa mental puede tener nombres invertidos (origin/capitalti, dev/Cotizador_Dev).
-4. Si Cursor muestra rama distinta a `git branch --show-current`: probable clone equivocado abierto. Verificar con `pwd` en terminal integrada de Cursor. Bastián tiene 2 clones: `~/Documents/GitHub/PLANILLA-COTIZADOR-BREKTO/` (correcto) y otro de `Cotizador-Multiple` / SebaVilla (NO usar).
+4. Si Cursor muestra rama distinta a `git branch --show-current`: probable clone equivocado abierto. Verificar con `pwd` en terminal integrada de Cursor. Bastián tiene 2 clones: `~/Developer/GitHub/PLANILLA-COTIZADOR-BREKTO/` (correcto) y otro de `Cotizador-Multiple` / SebaVilla (NO usar).
 5. Antes de cambios visuales: tener claro si afectan el PDF **comercial** (`ModuloPDF.tsx`), el **operacional** (`PdfOperacional.tsx`), o ambos.
 
 ## Historial de hitos (commits clave)

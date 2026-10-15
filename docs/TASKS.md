@@ -12,15 +12,12 @@
 
 | ID | Título | Estado | Carril actual | Abierto |
 |---|---|---|---|---|
-| P-01 | Pushear `Cotizador_Dev` a `origin`: va 2 commits adelante tras sincronizar con `capitalti/dev` (supabase/ de Sebastián). Requiere OK de BR | registrado | BR | 2026-10-14 |
-| N-01 | Documentar en `CLAUDE.md` que producción se publica desde `giovannimarisio/cotizadormultiple` (remote `prod`), no desde `capitalti` | registrado | PM | 2026-10-14 |
 
 ### 🟢 P2 — Cuando haya espacio
 
 | ID | Título | Estado | Carril actual | Abierto |
 |---|---|---|---|---|
 | N-02 | Sitio Netlify `cotizador-multiple-brekto` (cuenta de BR) apunta a rama `dev` inexistente en `origin`; último deploy 2026-04-24. Decidir: reapuntar a `Cotizador_Dev` o eliminar | registrado | BR | 2026-10-14 |
-| N-03 | `CLAUDE.md` dice que el clon está en `~/Documents/GitHub/`; el real está en `~/Developer/GitHub/` | registrado | PM | 2026-10-14 |
 
 ### 🟣 Deuda con disparador
 
@@ -31,6 +28,9 @@
 
 | ID | Título | Integrado en | Cerrado |
 |---|---|---|---|
+| P-01 | Pushear `Cotizador_Dev` a `origin` tras sincronizar con `capitalti/dev` | `origin/Cotizador_Dev` (0 sin pushear, VERIFICADO `contexto.sh pm fetch` 2026-10-15 14:44) | 2026-10-15 |
+| N-01 | Documentar en `CLAUDE.md` que producción sale de `giovannimarisio/cotizadormultiple` (remote `prod`) | `CLAUDE.md` §Flujo de trabajo y §Repo y ramas (sin commitear) | 2026-10-15 |
+| N-03 | Ruta del clon en `CLAUDE.md`: `~/Documents/GitHub/` → `~/Developer/GitHub/` | `CLAUDE.md` §Repo y ramas y §Checklist (sin commitear) | 2026-10-15 |
 
 ---
 
