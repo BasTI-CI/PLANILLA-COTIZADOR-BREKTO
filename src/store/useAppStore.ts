@@ -19,6 +19,7 @@ import {
   DEFAULT_PROMOCIONES,
 } from '@/types'
 import { devolucionIvaPrecioDeptoClp } from '@/lib/engines/precioCompra'
+import { MAX_COTIZACIONES } from '@/lib/cotizaciones'
 
 // ─────────────────────────────────────────────
 // Cotización vacía por defecto
@@ -118,7 +119,7 @@ export const useAppStore = create<AppState & AppActions>()(
     // ── Cotizaciones ────────────────────────
     agregarCotizacion: () =>
       set((state) => {
-        if (state.cotizaciones.length >= 4) return
+        if (state.cotizaciones.length >= MAX_COTIZACIONES) return
         const nuevoId = state.cotizaciones.length
         state.cotizaciones.push(cotizacionVacia(nuevoId))
         state.cotizacion_activa_idx = nuevoId
