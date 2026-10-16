@@ -158,10 +158,15 @@ export function mapStockItemToUnidadSupabase(
   const base = pickNumeroUnidadFromStockRow(raw, id)
   const numero = aplicarHintNumeroBusqueda(base, unidadBusquedaHint)
 
-  // Precios: el stock maestro guarda valores en UF (columnas sin sufijo _uf).
+  // Precios: el stock maestro guarda los precios en UF (columnas sin sufijo _uf).
+  // `descuento` viene en % 0–100 del precio lista (misma escala que las columnas `f_*`) y se pasa a UF;
+  // un `descuento_uf` explícito (compat) se usa tal cual.
   // `precio_neto_uf` es derivado (no se lee de BD); mantiene la invariante lista − descuento = neto (§8.1).
   const precio_lista_uf = n(raw.precio_lista_uf ?? raw.precio_lista ?? raw.precio_uf)
-  const descuento_uf = n(raw.descuento_uf ?? raw.descuento)
+  const descuento_uf =
+    raw.descuento_uf != null
+      ? n(raw.descuento_uf)
+      : Math.round(precio_lista_uf * (n(raw.descuento) / 100) * 100) / 100
   const precio_neto_uf = Math.round((precio_lista_uf - descuento_uf) * 100) / 100
 
   // Bonos en el stock maestro vienen como porcentaje 0–100 (prefijo `f_*`); el motor usa decimal 0–1.
