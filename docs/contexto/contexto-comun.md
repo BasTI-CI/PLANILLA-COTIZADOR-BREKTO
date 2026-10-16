@@ -96,8 +96,9 @@ prod      giovannimarisio/cotizadormultiple             main → Netlify (equipo
 
 ### Qué significa "levantar" en este proyecto
 
-1. Code trabaja en una rama con el ID, creada desde `Cotizador_Dev` (`fix/b01-slug`).
-2. Con autorización de BR: merge a `Cotizador_Dev` y push a `origin`.
+1. Code trabaja en un worktree con una rama con el ID, creada desde `Testing` (`fix/b01-slug`).
+   Ver §5 Worktrees.
+2. Con autorización de BR: merge a `Testing`; luego PR `Testing` → `origin/main` y push.
 3. BR (o el PM, a pedido de BR) le avisa a Sebastián con el link de la rama.
 4. **Nunca** se pushea a `capitalti` ni a `prod`.
 
@@ -173,8 +174,44 @@ IDs leyendo los commits: un commit sin ID es trabajo invisible para el arranque.
 
 ## 5. Módulos activos
 
-Ninguno (flujo liviano). Se activan con `/equipo ampliar <adr|worktrees|migraciones>` y se agregan
-acá.
+### Worktrees (activo desde 2026-10-15 · decisión de BR, BINDING)
+
+> BR: _«Siempre se trabaja en Worktrees, por seguridad para no pisar código de producción. Los
+> Worktrees se mergean a Testing y de Testing se hace PR a Main. La idea es que trabajen todas las
+> ventanas de código en simultáneo.»_
+
+```
+worktree por ID (fix/b05-slug) ──merge──▶ Testing ──PR──▶ origin/main ──aviso──▶ Sebastián
+```
+
+- **Cada ventana de Code trabaja en su propio worktree.** Es precondición de arranque: se crea
+  antes del primer cambio, **desde `Testing`**:
+
+      git worktree add ../PLANILLA-COTIZADOR-BREKTO-wt/b05 -b fix/b05-slug Testing
+      cd ../PLANILLA-COTIZADOR-BREKTO-wt/b05 && pnpm install
+
+- Los worktrees viven **fuera del repo**, en la carpeta hermana `../PLANILLA-COTIZADOR-BREKTO-wt/`
+  (no en `.claude/worktrees/`): así vitest y vite del árbol principal no recogen los tests ni los
+  archivos de otros worktrees, y no hace falta tocar `.gitignore`.
+- **`Testing`** (creada 2026-10-15 desde `Cotizador_Dev` en `bd8c9fb`) tiene su propio worktree
+  fijo: `../PLANILLA-COTIZADOR-BREKTO-wt/testing`. El merge se hace **ahí**, nunca con `checkout`
+  en otra carpeta:
+
+      git -C ../PLANILLA-COTIZADOR-BREKTO-wt/testing merge --no-ff fix/b05-slug
+
+  Si el merge da **conflicto**: `git -C ../PLANILLA-COTIZADOR-BREKTO-wt/testing merge --abort`,
+  STOP y reportar a PP. No se resuelven conflictos sin BR. Después del merge, correr
+  `pnpm test` y `pnpm build` en el worktree de `testing`; si fallan, se reporta (no se revierte
+  solo).
+- **El árbol principal es de BR y del PM** (rama `Cotizador_Dev`). Code no hace `checkout` ahí.
+- **Autorización vigente (BR, 2026-10-15 noche):** las ventanas de Code pueden **commitear en su
+  rama y mergear a `Testing` en local**. **Push y PR siguen requiriendo autorización explícita de
+  BR.** Esta autorización vale para B-01 a B-08.
+- El PR va de `Testing` a **`main` de `origin`** (BasTI-CI). Después se avisa a Sebastián como
+  siempre (§1).
+- Al integrarse una rama, su worktree se elimina (`git worktree remove`). Un worktree huérfano es
+  una fuente de verdad falsa.
+- Pendiente de definir con BR: qué rol queda para `Cotizador_Dev` en el nuevo flujo.
 
 ---
 

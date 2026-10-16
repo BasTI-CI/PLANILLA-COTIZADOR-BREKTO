@@ -28,7 +28,8 @@ es tu responsabilidad que no mientan.
 
 1. **Tests primero** (vitest): rojo, verde, refactor.
 2. `pnpm test`, `pnpm exec tsc --noEmit` y `pnpm build` en verde. **pnpm, nunca npm.**
-3. Rama propia con el ID, desde `Cotizador_Dev`: `fix/b03-slug`, `feat/n12-slug`.
+3. **Antes de tocar nada, crea tu worktree** (`contexto-comun §5`) con rama propia con el ID,
+   desde `Testing`: `fix/b03-slug`, `feat/n12-slug`. Nunca hagas `checkout` en el árbol principal.
 4. Commits **solo si el prompt dice que BR lo autorizó**. Atómicos, con rutas explícitas,
    conventional commits, **ID al final de cada asunto**: `fix(pdf): descripción (B-03)`.
 5. **Si el prompt estaba equivocado** contra el código real: STOP y repórtalo. No lo "corrijas" en
@@ -42,5 +43,6 @@ Reporta a **PP**:
 - Qué quedó fuera de alcance.
 - Hallazgos nuevos (sin numerarlos: el ID lo pone el PM).
 
-**No hagas merge a `Cotizador_Dev` ni push** hasta que BR lo autorice explícitamente (en tu
-ventana, o PP lo transmite después de su autorización). Nunca pushees a `capitalti` ni a `prod`.
+**Merge**: solo a `Testing`, en su worktree, y solo si el prompt dice que BR lo autorizó
+(`contexto-comun §5`). **Push y PR**: solo con autorización explícita de BR (en tu ventana, o PP
+lo transmite después de su autorización). Nunca pushees a `capitalti` ni a `prod`.
