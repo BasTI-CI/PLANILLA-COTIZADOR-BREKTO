@@ -236,22 +236,25 @@ function TablaCot({ headers, children, columnAlignments }: {
   )
 }
 
-function Row({ cells, destacada = false, columnAlignments }: {
+function Row({ cells, destacada = false, separador = false, columnAlignments }: {
   cells: (string | number | React.ReactNode)[]
   destacada?: boolean
+  /** Fila-título de apartado dentro de la tabla (fondo claro, texto azul bold). */
+  separador?: boolean
   columnAlignments?: ('left' | 'right' | 'center')[]
 }) {
   const align = (i: number) => columnAlignments?.[i] ?? (i === 0 ? 'left' : 'right')
+  const bg = destacada ? T.accent : separador ? T.card : '#ffffff'
   return (
-    <tr style={{ background: destacada ? T.accent : '#ffffff', borderBottom: `1px solid ${T.border}` }}>
+    <tr style={{ background: bg, borderBottom: `1px solid ${T.border}` }}>
       {cells.map((c, i) => (
         <td
           key={i}
           style={{
             padding: '6px 10px',
-            color: destacada ? '#ffffff' : T.text,
+            color: destacada ? '#ffffff' : separador ? T.accent : T.text,
             fontSize: 11,
-            fontWeight: destacada ? 700 : 400,
+            fontWeight: destacada || separador ? 700 : 400,
             textAlign: align(i),
             fontVariantNumeric: 'tabular-nums',
           }}
@@ -521,21 +524,50 @@ function renderBloqueFG(
           fmtUF(r.plusvalia.ganancia_venta_uf),
           fmtCLP(r.plusvalia.ganancia_venta_clp),
         ]} />
+        <Row separador cells={['Arriendo', '', '']} />
         <Row cells={[
           'Dividendo (mensual)',
           fmtUF(r.hipotecario.dividendo_total_uf),
           fmtCLP(r.hipotecario.dividendo_total_clp),
         ]} />
-        <Row cells={[
-          renta === 'corta' ? 'Arriendo proyectado renta corta (mensual)' : 'Arriendo proyectado mensual',
-          '—',
-          fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
-        ]} />
-        <Row destacada cells={[
-          'Resultado mensual (arriendo − dividendo)',
-          '—',
-          fmtCLP(r.arriendo.resultado_mensual_clp),
-        ]} />
+        {r.arriendo.tiene_ag ? (
+          <>
+            {/* §3.5.1 · AG meses 1…N; arriendo de mercado desde N+1. */}
+            <Row cells={[
+              `Arriendo garantizado (meses 1–${r.arriendo.ag_meses})`,
+              '—',
+              fmtCLP(r.arriendo.arriendo_garantizado_clp),
+            ]} />
+            <Row destacada cells={[
+              'Diferencia arriendo garantizado − dividendo',
+              '—',
+              fmtCLP(r.arriendo.diferencia_div_ag_clp),
+            ]} />
+            <Row cells={[
+              `Arriendo promedio zona (desde mes ${r.arriendo.ag_meses + 1})`,
+              '—',
+              fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
+            ]} />
+            <Row destacada cells={[
+              'Diferencia arriendo de mercado − dividendo',
+              '—',
+              fmtCLP(r.arriendo.diferencia_div_mercado_clp),
+            ]} />
+          </>
+        ) : (
+          <>
+            <Row cells={[
+              renta === 'corta' ? 'Arriendo proyectado renta corta (mensual)' : 'Arriendo proyectado mensual',
+              '—',
+              fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
+            ]} />
+            <Row destacada cells={[
+              'Resultado mensual (arriendo − dividendo)',
+              '—',
+              fmtCLP(r.arriendo.resultado_mensual_clp),
+            ]} />
+          </>
+        )}
       </TablaCot>
 
       <SubTitle>F · Promociones de la Cotización</SubTitle>
@@ -977,9 +1009,22 @@ export default function ModuloPDF() {
                     </div>
                     <div>
                       <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Resultado mensual arriendo</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad }}>
-                        {fmtCLP(r.arriendo.resultado_mensual_clp)}
-                      </div>
+                      {r.arriendo.tiene_ag ? (
+                        <>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_ag_clp >= 0 ? T.good : T.bad }}>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Con AG ({r.arriendo.ag_meses} meses) </span>
+                            {fmtCLP(r.arriendo.diferencia_div_ag_clp)}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_mercado_clp >= 0 ? T.good : T.bad }}>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Mercado </span>
+                            {fmtCLP(r.arriendo.diferencia_div_mercado_clp)}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad }}>
+                          {fmtCLP(r.arriendo.resultado_mensual_clp)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
