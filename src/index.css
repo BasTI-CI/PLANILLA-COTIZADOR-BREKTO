@@ -821,3 +821,15 @@ input.form-input.input-no-spinner[type='number'],
     break-inside: avoid;
   }
 }
+
+/* ── Hojas PDF: aisladas del tema oscuro global (B-05) ─────────────────────
+   Las reglas de elemento de arriba (body, table, th, td) se cuelan dentro de
+   las hojas [data-pdf-page] y dejan texto claro sobre blanco o tapan las
+   cabeceras azules. Aquí se neutraliza solo color/fondo/borde; padding,
+   font-size, text-transform y white-space se mantienen. */
+[data-pdf-page="true"] { line-height: 1.35; color: #0f172a; }
+[data-pdf-page="true"] thead { position: static; }
+[data-pdf-page="true"] th { background: transparent; color: inherit; border-bottom: none; }
+[data-pdf-page="true"] td,
+[data-pdf-page="true"] td:first-child { color: inherit; font-weight: inherit; border-bottom: none; }
+[data-pdf-page="true"] tr:hover td { background: transparent; }
