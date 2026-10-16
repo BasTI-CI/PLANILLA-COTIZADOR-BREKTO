@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion } from '@/lib/engines/calculosDiversificacion'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import {
   seriePatrimonioTotalUf,
   liquidezVentaUnidadClp,
@@ -51,6 +51,7 @@ export default function ModuloResumen() {
   }
 
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
+  const hayBonoPie = activas.some((c) => tieneBonoPie(c.pie))
 
   const tablaDiv = useMemo(
     () => calcularDiversificacion(diversificacion, cotizaciones, uf),
@@ -138,7 +139,7 @@ export default function ModuloResumen() {
                 <th>Valor tasación depto</th>
                 <th>Valor escrituración</th>
                 <th>Pie doc.</th>
-                <th>Bono pie</th>
+                {hayBonoPie && <th>Bono pie</th>}
                 <th>Pie a pagar</th>
                 <th>Dividendo</th>
                 <th>Plusvalía</th>
@@ -199,12 +200,21 @@ export default function ModuloResumen() {
                         <span className="cell-stack__ufline" style={{ color: 'var(--color-gold)' }}>{fmtUF(r.pie_total_uf)}</span>
                       </div>
                     </td>
-                    <td className="td-num">
-                      <div className="cell-stack">
-                        <span className="cell-stack__line1">{fmtUF(bonoPie)}</span>
-                        <span className="cell-stack__line2">{fmtCLP(bonoPie * uf)}</span>
-                      </div>
-                    </td>
+                    {hayBonoPie && (
+                      <td className="td-num">
+                        <div className="cell-stack">
+                          {tieneBonoPie(c.pie) ? (
+                            <>
+                              <span className="cell-stack__line1">{(bonoPiePct(c.pie) * 100).toFixed(2)}%</span>
+                              <span className="cell-stack__line2">{fmtUF(bonoPie)}</span>
+                              <span className="cell-stack__line2">{fmtCLP(bonoPie * uf)}</span>
+                            </>
+                          ) : (
+                            <span className="cell-stack__line1">—</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="td-num">
                       <div className="cell-stack">
                         <span className="cell-stack__line1" style={{ color: 'var(--color-gold)' }}>{fmtUF(piePagar)}</span>
