@@ -4,6 +4,7 @@ import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion, calcularIvaTotal } from '@/lib/engines/calculosDiversificacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import { seriePatrimonioTotalUf, liquidezVentaUnidadClp } from '@/lib/engines/resumenGraficos'
 import TablaCashflow60m from '@/components/flujo/TablaCashflow60m'
@@ -343,9 +344,12 @@ function renderBloqueAE(
   uf: number,
   global: { asesor_nombre: string; asesor_correo: string; inversionista_nombre: string; inversionista_correo: string; inversionista_rut: string }
 ) {
-  const propiedad = c.propiedad
-  const pie = c.pie
-  const hip = c.hipotecario
+  // B-04: se muestra la cotización efectiva (en contado: sin BI, pie 100 % upfront, crédito 0 %).
+  const contado = esCompraContado(c)
+  const ce = cotizacionEfectiva(c)
+  const propiedad = ce.propiedad
+  const pie = ce.pie
+  const hip = ce.hipotecario
   const pcDeptoUf = precioCompraDeptoUf(propiedad)
   const descuentoTotalUf = propiedad.descuento_uf
   const beneficioUf = r.beneficio_inmobiliario_uf
@@ -419,18 +423,20 @@ function renderBloqueAE(
           `−${fmtCLP(propiedad.precio_neto_uf * propiedad.bono_max_pct * uf)}`,
         ]} />
         <Row destacada cells={['PRECIO COMPRA (depto)', fmtUF(pcDeptoUf), fmtCLP(pcDeptoUf * uf)]} />
-        <Row cells={[`(+) Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`, `+${fmtUF(beneficioUf)}`, `+${fmtCLP(beneficioUf * uf)}`]} />
+        {!contado && (
+          <Row cells={[`(+) Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`, `+${fmtUF(beneficioUf)}`, `+${fmtCLP(beneficioUf * uf)}`]} />
+        )}
         <Row destacada cells={['VALOR ESCRITURACIÓN DEPARTAMENTO', fmtUF(r.valor_tasacion_uf), fmtCLP(r.valor_tasacion_uf * uf)]} />
         {tieneEst && (
           <Row cells={[
-            `(+) Estacionamiento${propiedad.bono_aplica_adicionales ? ' · con BI' : ''}`,
+            `(+) Estacionamiento${propiedad.bono_aplica_adicionales && !contado ? ' · con BI' : ''}`,
             `+${fmtUF(propiedad.estacionamiento_uf)}`,
             `+${fmtCLP(propiedad.estacionamiento_uf * uf)}`,
           ]} />
         )}
         {tieneBod && (
           <Row cells={[
-            `(+) Bodega${propiedad.bono_aplica_adicionales ? ' · con BI' : ''}`,
+            `(+) Bodega${propiedad.bono_aplica_adicionales && !contado ? ' · con BI' : ''}`,
             `+${fmtUF(propiedad.bodega_uf)}`,
             `+${fmtCLP(propiedad.bodega_uf * uf)}`,
           ]} />
@@ -444,6 +450,11 @@ function renderBloqueAE(
             Configuración del pie a partir del valor escrituración: documentado → bono → a pagar,
             y desglose de cuotas (upfront / antes / después / cuotón / total). */}
       <SubTitle>C · Pie y Forma de Pago</SubTitle>
+      {contado ? (
+        <TablaCot headers={['Concepto', 'Detalle', 'Valor UF', 'Valor CLP']}>
+          <Row destacada cells={['Pago contado (100 %)', 'Pago único', fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
+        </TablaCot>
+      ) : (
       <TablaCot headers={['Concepto', 'Detalle', 'Valor UF', 'Valor CLP']}>
         <Row cells={['Pie a documentar', `${(pie.pie_pct * 100).toFixed(2)}% sobre escrituración`, fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
         <Row cells={[
@@ -479,18 +490,25 @@ function renderBloqueAE(
           `${fmtCLP(desg.monto_cuoton_clp)} / cuota`,
         ]} />
       </TablaCot>
+      )}
 
       {/* D · Escrituración y Crédito Hipotecario — datos clave del crédito y dividendo. */}
       <SubTitle>D · Escrituración y Crédito Hipotecario</SubTitle>
       <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
         <Row cells={['Valor de escrituración', fmtUF(r.valor_escritura_uf), fmtCLP(r.valor_escritura_uf * uf)]} />
-        <Row cells={['Pie total a documentar', fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
-        <Row destacada cells={[
-          `Crédito (${(hip.hipotecario_aprobacion_pct * 100).toFixed(0)}% · ${(hip.hipotecario_tasa_anual * 100).toFixed(2)}% anual · ${hip.hipotecario_plazo_anos} años)`,
-          fmtUF(r.hipotecario.monto_credito_uf),
-          fmtCLP(r.hipotecario.monto_credito_clp),
-        ]} />
-        <Row destacada cells={['Dividendo mensual', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
+        {contado ? (
+          <Row destacada cells={['Compra contado — sin crédito hipotecario', '—', '—']} />
+        ) : (
+          <>
+            <Row cells={['Pie total a documentar', fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
+            <Row destacada cells={[
+              `Crédito (${(hip.hipotecario_aprobacion_pct * 100).toFixed(0)}% · ${(hip.hipotecario_tasa_anual * 100).toFixed(2)}% anual · ${hip.hipotecario_plazo_anos} años)`,
+              fmtUF(r.hipotecario.monto_credito_uf),
+              fmtCLP(r.hipotecario.monto_credito_clp),
+            ]} />
+            <Row destacada cells={['Dividendo mensual', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
+          </>
+        )}
       </TablaCot>
     </>
   )
@@ -505,6 +523,7 @@ function renderBloqueFG(
 ) {
   const rent = c.rentabilidad
   const renta = rent.tipo_renta
+  const contado = esCompraContado(c)
   const promociones = leyendaPromociones(c.promociones)
 
   return (
@@ -525,11 +544,13 @@ function renderBloqueFG(
           fmtCLP(r.plusvalia.ganancia_venta_clp),
         ]} />
         <Row separador cells={['Arriendo', '', '']} />
-        <Row cells={[
-          'Dividendo (mensual)',
-          fmtUF(r.hipotecario.dividendo_total_uf),
-          fmtCLP(r.hipotecario.dividendo_total_clp),
-        ]} />
+        {!contado && (
+          <Row cells={[
+            'Dividendo (mensual)',
+            fmtUF(r.hipotecario.dividendo_total_uf),
+            fmtCLP(r.hipotecario.dividendo_total_clp),
+          ]} />
+        )}
         {r.arriendo.tiene_ag ? (
           <>
             {/* §3.5.1 · AG meses 1…N; arriendo de mercado desde N+1. */}
@@ -562,7 +583,7 @@ function renderBloqueFG(
               fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
             ]} />
             <Row destacada cells={[
-              'Resultado mensual (arriendo − dividendo)',
+              contado ? 'Resultado mensual (compra contado, sin dividendo)' : 'Resultado mensual (arriendo − dividendo)',
               '—',
               fmtCLP(r.arriendo.resultado_mensual_clp),
             ]} />
@@ -945,8 +966,10 @@ export default function ModuloPDF() {
               <tbody>
                 {activas.map((c, i) => {
                   const r = resultados[i]
-                  const bp = bonoPieUf(r.valor_escritura_uf, c.pie)
-                  const pp = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, c.pie)
+                  const contado = esCompraContado(c)
+                  const pieEf = cotizacionEfectiva(c).pie
+                  const bp = bonoPieUf(r.valor_escritura_uf, pieEf)
+                  const pp = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pieEf)
                   return (
                     <tr key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
                       <td style={{ padding: '5px', fontWeight: 700, color: T.gold }}>{letras[c.id]}</td>
@@ -963,20 +986,30 @@ export default function ModuloPDF() {
                       <td style={{ padding: '5px' }}>{fmtUF(r.valor_tasacion_uf)}</td>
                       <td style={{ padding: '5px' }}>{fmtUF(r.valor_escritura_uf)}</td>
                       <td style={{ padding: '5px' }}>
-                        <div style={{ color: T.gold, fontWeight: 700 }}>{(c.pie.pie_pct * 100).toFixed(0)}%</div>
+                        <div style={{ color: T.gold, fontWeight: 700 }}>{(pieEf.pie_pct * 100).toFixed(0)}%</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(r.pie_total_uf)}</div>
                       </td>
                       <td style={{ padding: '5px' }}>
-                        <div>{fmtUF(bp)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(bp * uf)}</div>
+                        {contado ? '—' : (
+                          <>
+                            <div>{fmtUF(bp)}</div>
+                            <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(bp * uf)}</div>
+                          </>
+                        )}
                       </td>
                       <td style={{ padding: '5px' }}>
                         <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(pp)}</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(pp * uf)}</div>
                       </td>
                       <td style={{ padding: '5px' }}>
-                        <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(r.hipotecario.dividendo_total_uf)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.hipotecario.dividendo_total_clp)}</div>
+                        {contado ? (
+                          <div style={{ color: T.gold, fontWeight: 700 }}>Contado</div>
+                        ) : (
+                          <>
+                            <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(r.hipotecario.dividendo_total_uf)}</div>
+                            <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.hipotecario.dividendo_total_clp)}</div>
+                          </>
+                        )}
                       </td>
                       <td style={{ padding: '5px', color: T.good }}>{(c.rentabilidad.plusvalia_anual_pct * 100).toFixed(1)}%</td>
                       <td style={{ padding: '5px', color: T.good }}>{(r.arriendo.cap_rate_anual_pct * 100).toFixed(2)}%</td>

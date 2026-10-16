@@ -7,6 +7,7 @@ import {
   ingresoNetoMensualRentaCortaClp,
 } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
+import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf, precioCompraTotalUf } from '@/lib/engines/precioCompra'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -67,6 +68,26 @@ function SectionHeading({ children }: { children: ReactNode }) {
   )
 }
 
+/** B-04: aviso cuando la cotización está en compra contado (pie, crédito y BI quedan sin efecto). */
+function AvisoCompraContado() {
+  return (
+    <div
+      style={{
+        margin: '0 0 12px',
+        padding: '10px 12px',
+        borderRadius: 8,
+        border: '1px solid rgba(59, 130, 246, 0.5)',
+        background: 'rgba(59, 130, 246, 0.1)',
+        fontSize: 12,
+        lineHeight: 1.45,
+      }}
+    >
+      <strong>Compra contado:</strong> pago único del 100 % del precio de compra. Sin crédito,
+      dividendo, cuotas, bono pie ni bonificación inmobiliaria.
+    </div>
+  )
+}
+
 /** Grilla formulario: columnas suficientemente anchas para etiquetas en una línea */
 const rowGridStyle: CSSProperties = {
   display: 'grid',
@@ -78,7 +99,7 @@ const rowGridStyle: CSSProperties = {
 export default function CotizacionForm({ cotizacionId }: Props) {
   const {
     cotizaciones, global, setGlobal, setPropiedad, setPie, setHipotecario, setRentabilidad,
-    setModoFuente, cargarDesdeSupabase, setPromociones,
+    setModoFuente, cargarDesdeSupabase, setPromociones, setCompraContado,
   } = useAppStore()
   const [generandoOperacional, setGenerandoOperacional] = useState(false)
 
@@ -266,6 +287,12 @@ export default function CotizacionForm({ cotizacionId }: Props) {
 
   // Tasación depto: `valor_tasacion_uf` sale del motor `calcularResultadosCotizacion` → `valorTasacionDeptoUf` en `src/lib/engines/calculosCotizacion.ts` (no se calcula en este archivo).
   const res = calcularResultadosCotizacion(cot, uf)
+  // B-04: lo calculado y mostrado sale de la cotización efectiva; los inputs leen `cot` crudo.
+  const contado = esCompraContado(cot)
+  const ce = cotizacionEfectiva(cot)
+  const estiloBloqueoContado: CSSProperties | undefined = contado
+    ? { opacity: 0.4, pointerEvents: 'none' }
+    : undefined
 
   const precioListaUf = p.precio_lista_uf
   const descuentoUfActual = p.descuento_uf
@@ -281,19 +308,19 @@ export default function CotizacionForm({ cotizacionId }: Props) {
     monto_cuota_antes_clp: montoCuotaAntesClp,
     monto_cuota_despues_clp: montoCuotaDespuesClp,
     monto_cuoton_clp: montoCuotonClp,
-  } = calcularMontosDesglosePieClp(valorEscrituraUf, pie, uf)
+  } = calcularMontosDesglosePieClp(valorEscrituraUf, ce.pie, uf)
 
   /**
    * Reglas (mismo criterio que `validarResultadosCotizacion`): crédito + pie doc = 100% s/ escritura;
    * **pie a documentar ≥ bono pie** donde bono pie = beneficio inmobiliario (`bono_descuento_pct`, un solo %).
    */
   const EPS_PCT_REVISION = 0.0005
-  const pctCreditoLt = hip.hipotecario_aprobacion_pct
-  const pctPieDoc = pie.pie_pct
-  const pctAbonoInicial = pie.upfront_pct
-  const pctAntesEntrega = pie.cuotas_antes_entrega_pct
-  const pctDespuesEntrega = pie.cuotas_despues_entrega_pct
-  const pctCuoton = pie.cuoton_pct
+  const pctCreditoLt = ce.hipotecario.hipotecario_aprobacion_pct
+  const pctPieDoc = ce.pie.pie_pct
+  const pctAbonoInicial = ce.pie.upfront_pct
+  const pctAntesEntrega = ce.pie.cuotas_antes_entrega_pct
+  const pctDespuesEntrega = ce.pie.cuotas_despues_entrega_pct
+  const pctCuoton = ce.pie.cuoton_pct
   /** Tramos de pie a cargo del cliente (s/ escritura): upfront + cuotas + cuotón. */
   const pctPieClienteTramos =
     pctAbonoInicial + pctAntesEntrega + pctDespuesEntrega + pctCuoton
@@ -303,7 +330,7 @@ export default function CotizacionForm({ cotizacionId }: Props) {
   const revisionCreditoPieOk = Math.abs(sumaCreditoMasPie - 1) <= EPS_PCT_REVISION
   /** Tramos no pueden superar el pie documentado (si no, resto negativo). */
   const desglosePieCoherente = pctRestoPieNoTramos >= -EPS_PCT_REVISION
-  const pctBonoPieBeneficio = p.bono_descuento_pct
+  const pctBonoPieBeneficio = ce.propiedad.bono_descuento_pct
   /** No documentar menos pie que el bono pie (BI) acordado. */
   const pieDocMayorOIgualBonoPie = pctPieDoc + EPS_PCT_REVISION >= pctBonoPieBeneficio
   const revisionPorcentajesOk =
@@ -919,12 +946,12 @@ create policy "inmobiliarias_select_anon"
               }}
             />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label" title="Bono pie = beneficio inmobiliario (un solo %). El pie a documentar debe ser ≥ este %.">
               Bono pie / Beneficio inmobiliario (%)
             </label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={p.bono_descuento_pct * 100}
@@ -1021,6 +1048,11 @@ create policy "inmobiliarias_select_anon"
           )}
 
           <SectionHeading>PIE Y FORMA DE PAGO</SectionHeading>
+          {contado && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <AvisoCompraContado />
+            </div>
+          )}
           <p
             style={{
               gridColumn: '1 / -1',
@@ -1035,10 +1067,10 @@ create policy "inmobiliarias_select_anon"
             cuotón) + <strong>resto</strong>. Junto con % crédito = 100% s/ escritura. Tramos sobre{' '}
             <span style={{ color: 'var(--color-text)' }}>valor escrituración</span>; «Resumen financiero» muestra $. Cuotas totales pie → Flujo.
           </p>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">PIE a documentar (%)</label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={pie.pie_pct * 100}
@@ -1060,10 +1092,10 @@ create policy "inmobiliarias_select_anon"
               </div>
             </div>
           )}
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Upfront % (s/ escrit.)</label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={pie.upfront_pct * 100}
@@ -1074,10 +1106,10 @@ create policy "inmobiliarias_select_anon"
               <span className="suffix">%</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label" title="% antes entrega sobre valor escrituración">% Antes entr. (s/ escrit.)</label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={pie.cuotas_antes_entrega_pct * 100}
@@ -1088,9 +1120,9 @@ create policy "inmobiliarias_select_anon"
               <span className="suffix">%</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">N° cuotas antes entrega</label>
-            <FormattedNumberInput
+            <FormattedNumberInput readOnly={contado}
               min={0}
               max={120}
               className="form-input"
@@ -1099,10 +1131,10 @@ create policy "inmobiliarias_select_anon"
               onChange={(val) => setPie(cotizacionId, { cuotas_antes_entrega_n: val })}
             />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label" title="% después entrega sobre valor escrituración">% Después entr. (s/ escrit.)</label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={pie.cuotas_despues_entrega_pct * 100}
@@ -1113,9 +1145,9 @@ create policy "inmobiliarias_select_anon"
               <span className="suffix">%</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">N° cuotas después entrega</label>
-            <FormattedNumberInput
+            <FormattedNumberInput readOnly={contado}
               min={0}
               max={120}
               className="form-input"
@@ -1124,10 +1156,10 @@ create policy "inmobiliarias_select_anon"
               onChange={(val) => setPie(cotizacionId, { cuotas_despues_entrega_n: val })}
             />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Cuotón % (s/ escrit.)</label>
             <div className="form-input-group">
-              <FormattedNumberInput
+              <FormattedNumberInput readOnly={contado}
                 min={0}
                 max={100}
                 value={pie.cuoton_pct * 100}
@@ -1138,9 +1170,9 @@ create policy "inmobiliarias_select_anon"
               <span className="suffix">%</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">N° cuotas cuotón</label>
-            <FormattedNumberInput
+            <FormattedNumberInput readOnly={contado}
               min={0}
               max={120}
               className="form-input"
@@ -1149,9 +1181,9 @@ create policy "inmobiliarias_select_anon"
               onChange={(val) => setPie(cotizacionId, { cuoton_n_cuotas: val })}
             />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Cuotas totales pie</label>
-            <FormattedNumberInput
+            <FormattedNumberInput readOnly={contado}
               min={0}
               max={120}
               className="form-input"
@@ -1209,8 +1241,22 @@ create policy "inmobiliarias_select_anon"
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">🏦 Crédito hipotecario</h3>
-          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sistema Francés + seguros</span>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            title="Pago único del 100 % del precio de compra, sin crédito (B-04)"
+          >
+            <input
+              type="checkbox"
+              checked={contado}
+              onChange={(e) => setCompraContado(cotizacionId, e.target.checked)}
+            />
+            Compra contado
+          </label>
+          {!contado && (
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sistema Francés + seguros</span>
+          )}
         </div>
+        {contado && <AvisoCompraContado />}
         <div style={rowGridStyle}>
           <SectionHeading>CRÉDITO SOBRE VALOR ESCRITURACIÓN</SectionHeading>
           <div className="form-group">
@@ -1219,10 +1265,10 @@ create policy "inmobiliarias_select_anon"
               {formatUF(res.valor_escritura_uf)}
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">% crédito</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={50} max={100}
+              <FormattedNumberInput readOnly={contado} min={50} max={100}
                 value={hip.hipotecario_aprobacion_pct * 100} decimals={2}
                 onChange={(val) => setHipotecario(cotizacionId, { hipotecario_aprobacion_pct: val / 100 })} style={{ width: '100%' }} />
               <span className="suffix">%</span>
@@ -1231,7 +1277,7 @@ create policy "inmobiliarias_select_anon"
           <div className="form-group">
             <label className="form-label">PIE a documentar %</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
-              {(pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+              {(ce.pie.pie_pct * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
             </div>
           </div>
           <div
@@ -1247,31 +1293,31 @@ create policy "inmobiliarias_select_anon"
           >
             Monto crédito: <strong style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{formatUF(res.hipotecario.monto_credito_uf)}</strong>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Tasa interés (%)</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={0} max={20}
+              <FormattedNumberInput readOnly={contado} min={0} max={20}
                 value={hip.hipotecario_tasa_anual * 100} decimals={2}
                 onChange={(val) => setHipotecario(cotizacionId, { hipotecario_tasa_anual: val / 100 })} style={{ width: '100%' }} />
               <span className="suffix">%</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Plazo años</label>
             <div className="form-input-group">
-              <FormattedNumberInput min={5} max={30}
+              <FormattedNumberInput readOnly={contado} min={5} max={30}
                 value={hip.hipotecario_plazo_anos} decimals={0}
                 onChange={(val) => setHipotecario(cotizacionId, { hipotecario_plazo_anos: val })} style={{ width: '100%' }} />
               <span className="suffix">años</span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Monto dividendo UF</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {formatUF(res.hipotecario.dividendo_total_uf)}
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={estiloBloqueoContado}>
             <label className="form-label">Monto dividendo ($)</label>
             <div className="form-input" style={{ padding: '10px 12px', fontWeight: 600 }}>
               {formatCLP(res.hipotecario.dividendo_total_clp)}
@@ -1704,16 +1750,26 @@ create policy "inmobiliarias_select_anon"
               <span className="stat-value gold">{formatUF(res.pie_total_uf)}</span>
               <span className="stat-sub">{formatCLP(res.pie_total_clp)}</span>
             </div>
-            <div className="stat-item">
-              <span className="stat-label">Monto Crédito</span>
-              <span className="stat-value blue">{formatUF(res.hipotecario.monto_credito_uf)}</span>
-              <span className="stat-sub">{formatCLP(res.hipotecario.monto_credito_clp)}</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-label">Dividendo Mensual</span>
-              <span className="stat-value gold">{formatUF(res.hipotecario.dividendo_total_uf)}</span>
-              <span className="stat-sub">{formatCLP(res.hipotecario.dividendo_total_clp)}</span>
-            </div>
+            {contado ? (
+              <div className="stat-item">
+                <span className="stat-label">Crédito / Dividendo</span>
+                <span className="stat-value blue">Contado</span>
+                <span className="stat-sub">Sin crédito hipotecario</span>
+              </div>
+            ) : (
+              <>
+                <div className="stat-item">
+                  <span className="stat-label">Monto Crédito</span>
+                  <span className="stat-value blue">{formatUF(res.hipotecario.monto_credito_uf)}</span>
+                  <span className="stat-sub">{formatCLP(res.hipotecario.monto_credito_clp)}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Dividendo Mensual</span>
+                  <span className="stat-value gold">{formatUF(res.hipotecario.dividendo_total_uf)}</span>
+                  <span className="stat-sub">{formatCLP(res.hipotecario.dividendo_total_clp)}</span>
+                </div>
+              </>
+            )}
             <div className="stat-item">
               <span className="stat-label">
                 {cot.rentabilidad.tipo_renta === 'corta' ? 'Ingreso neto renta corta' : 'Arriendo neto mensual'}
