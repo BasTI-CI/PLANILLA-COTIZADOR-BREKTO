@@ -596,17 +596,36 @@ export default function ModuloResumen() {
                 </div>
                 <div className="stat-item">
                   <span className="stat-label">Resultado mensual arriendo</span>
-                  <span
-                    className="stat-value"
-                    style={{
-                      color:
-                        r.arriendo.resultado_mensual_clp >= 0
-                          ? 'var(--color-success)'
-                          : 'var(--color-error)',
-                    }}
-                  >
-                    {fmtCLP(r.arriendo.resultado_mensual_clp)}
-                  </span>
+                  {r.arriendo.tiene_ag ? (
+                    <>
+                      <span className="stat-sub">Con AG ({r.arriendo.ag_meses} meses)</span>
+                      <span
+                        className="stat-value"
+                        style={{ color: r.arriendo.diferencia_div_ag_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}
+                      >
+                        {fmtCLP(r.arriendo.diferencia_div_ag_clp)}
+                      </span>
+                      <span className="stat-sub">Mercado</span>
+                      <span
+                        className="stat-value"
+                        style={{ color: r.arriendo.diferencia_div_mercado_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}
+                      >
+                        {fmtCLP(r.arriendo.diferencia_div_mercado_clp)}
+                      </span>
+                    </>
+                  ) : (
+                    <span
+                      className="stat-value"
+                      style={{
+                        color:
+                          r.arriendo.resultado_mensual_clp >= 0
+                            ? 'var(--color-success)'
+                            : 'var(--color-error)',
+                      }}
+                    >
+                      {fmtCLP(r.arriendo.resultado_mensual_clp)}
+                    </span>
+                  )}
                 </div>
               </div>
             )

@@ -1519,7 +1519,7 @@ create policy "inmobiliarias_select_anon"
 
           <SectionHeading>RENTABILIDAD ARRIENDO TRADICIONAL</SectionHeading>
           <div className="form-group" style={{ maxWidth: 300 }}>
-            <label className="form-label" title="Arriendo mensual neto (CLP)">Arriendo neto mensual ($)</label>
+            <label className="form-label" title="Arriendo mensual neto de mercado (CLP)">Arriendo promedio zona ($)</label>
             <FormattedNumberInput min={0} className="form-input"
               placeholder="$CLP neto mensual" decimals={0}
               value={cot.rentabilidad.arriendo_mensual_clp || 0}
@@ -1528,6 +1528,41 @@ create policy "inmobiliarias_select_anon"
               Neto (corretaje/vacancia descontados). Flujo con <strong>LARGA</strong>.
             </span>
           </div>
+          {cot.rentabilidad.tipo_renta === 'larga' && (() => {
+            // §3.5.1 · mismo booleano que el checkbox de Promociones; al apagarlo no se borran los valores.
+            const agActivo = !!promos.arriendo_garantizado
+            return (
+              <>
+                <div className="form-group" style={{ justifyContent: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={agActivo}
+                      onChange={(e) => setPromociones(cotizacionId, { arriendo_garantizado: e.target.checked })}
+                    />
+                    <span>Arriendo garantizado</span>
+                  </label>
+                </div>
+                <div className="form-group" style={{ opacity: agActivo ? 1 : 0.5 }}>
+                  <label className="form-label">Meses de AG</label>
+                  <FormattedNumberInput min={0} className="form-input" decimals={0}
+                    value={cot.rentabilidad.ag_meses || 0}
+                    readOnly={!agActivo}
+                    style={{ cursor: agActivo ? 'text' : 'not-allowed' }}
+                    onChange={(val) => setRentabilidad(cotizacionId, { ag_meses: val })} />
+                </div>
+                <div className="form-group" style={{ opacity: agActivo ? 1 : 0.5 }}>
+                  <label className="form-label" title="Arriendo garantizado mensual neto (CLP)">Arriendo garantizado ($)</label>
+                  <FormattedNumberInput min={0} className="form-input" decimals={0}
+                    placeholder="$CLP neto mensual"
+                    value={cot.rentabilidad.arriendo_garantizado_clp || 0}
+                    readOnly={!agActivo}
+                    style={{ cursor: agActivo ? 'text' : 'not-allowed' }}
+                    onChange={(val) => setRentabilidad(cotizacionId, { arriendo_garantizado_clp: val })} />
+                </div>
+              </>
+            )
+          })()}
 
           <SectionHeading>RENTABILIDAD ARRIENDO RENTA CORTA</SectionHeading>
           <div className="form-group" style={{ gridColumn: '1 / -1', maxWidth: 720 }}>
@@ -1686,9 +1721,20 @@ create policy "inmobiliarias_select_anon"
               <span className="stat-value" style={{ color: res.arriendo.ingreso_neto_flujo_clp > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
                 {formatCLP(res.arriendo.ingreso_neto_flujo_clp)}
               </span>
-              <span className="stat-sub" style={{ color: res.arriendo.resultado_mensual_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-                vs dividendo: {formatCLP(res.arriendo.resultado_mensual_clp)}/mes
-              </span>
+              {res.arriendo.tiene_ag ? (
+                <>
+                  <span className="stat-sub" style={{ color: res.arriendo.diferencia_div_ag_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    vs dividendo · AG ({res.arriendo.ag_meses} meses): {formatCLP(res.arriendo.diferencia_div_ag_clp)}/mes
+                  </span>
+                  <span className="stat-sub" style={{ color: res.arriendo.diferencia_div_mercado_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    vs dividendo · mercado: {formatCLP(res.arriendo.diferencia_div_mercado_clp)}/mes
+                  </span>
+                </>
+              ) : (
+                <span className="stat-sub" style={{ color: res.arriendo.resultado_mensual_clp >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  vs dividendo: {formatCLP(res.arriendo.resultado_mensual_clp)}/mes
+                </span>
+              )}
             </div>
           </div>
         </div>
