@@ -2,6 +2,7 @@ import type {
   DatosDiversificacion,
   Cotizacion,
   FilaDiversificacion,
+  ResultadosCotizacion,
 } from '@/types'
 import { calcularResultadosCotizacion } from './calculosCotizacion'
 import { calcularMontosDesglosePieClp } from './calculosPie'
@@ -75,7 +76,22 @@ function sumaEgresoPieMes(
   )
 }
 
-/** Suma (dividendo − arriendo) solo para unidades con mes > mes_entrega_flujo (desde entrega+1). */
+/**
+ * Ingreso de arriendo de la unidad en el mes j post-entrega (j = mes − mes_entrega_flujo), §3.5.1.
+ * j en 1…ag_meses → arriendo garantizado; j > ag_meses → arriendo de mercado (o neto renta corta).
+ * La regla de cuándo hay AG (solo renta larga, booleano encendido, ag_meses > 0) ya viene en
+ * r.arriendo.tiene_ag (calcularArriendo). Lo que pase del mes 60 simplemente no se consulta.
+ */
+export function arriendoFlujoUnidadMes(r: ResultadosCotizacion, j: number): number {
+  if (j < 1) return 0
+  if (r.arriendo.tiene_ag && j <= r.arriendo.ag_meses) return r.arriendo.arriendo_garantizado_clp
+  return r.arriendo.ingreso_neto_flujo_clp
+}
+
+/**
+ * Suma (dividendo − arriendo) solo para unidades con mes > mes_entrega_flujo (desde entrega+1).
+ * El arriendo es el AG en los primeros ag_meses post-entrega y el de mercado después (B-07).
+ */
 function sumaDividendoMenosArriendoPostEntrega(
   cotizacionesActivas: Cotizacion[],
   mes: number,
@@ -84,7 +100,8 @@ function sumaDividendoMenosArriendoPostEntrega(
   return cotizacionesActivas.reduce((sum, c) => {
     if (c.mes_entrega_flujo == null || mes <= c.mes_entrega_flujo) return sum
     const r = calcularResultadosCotizacion(c, uf_valor_clp)
-    return sum + (r.hipotecario.dividendo_total_clp - r.arriendo.ingreso_neto_flujo_clp)
+    const arriendo = arriendoFlujoUnidadMes(r, mes - c.mes_entrega_flujo)
+    return sum + (r.hipotecario.dividendo_total_clp - arriendo)
   }, 0)
 }
 
@@ -137,7 +154,8 @@ function ivaInyectadoEnMes(
 // Movimientos del mes:
 // - Pie: upfront mes 1; cuotas antes en 1…nAntes; cuotas después en (nAntes+1)…(nAntes+nDespues);
 //   cuotón en 1…nCuoton (según cotizador). Siempre ≥ 0 (egreso).
-// - Dividendo − arriendo: desde mes_entrega_flujo + 1 por cada cotización.
+// - Dividendo − arriendo: desde mes_entrega_flujo + 1 por cada cotización. Arriendo = AG en los
+//   primeros ag_meses post-entrega (solo renta larga) y de mercado después (§3.5.1).
 //   Con signo: positivo = dividendo domina (egreso); negativo = arriendo domina (ingreso a caja).
 // - IVA: mes_entrega_flujo + 5 por unidad que califica (manual repartido o lump en primer mes si sin base).
 //
