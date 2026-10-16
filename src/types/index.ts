@@ -137,6 +137,7 @@ export interface Cotizacion {
   modo_fuente: FuenteDatos               // 'supabase' | 'manual'
   activa: boolean                        // si esta cotización tiene datos
   califica_iva: boolean                  // ☑ checkbox hoja Flujo — ¿la unidad recibe devolución IVA?
+  compra_contado?: boolean               // B-04: true = sin crédito ni BI, pago único del 100 %
   /** Mes absoluto (1–60) de entrega en el horizonte de 60 meses; `null` = sin definir (el asesor lo ingresa en Flujo). */
   mes_entrega_flujo: number | null
 
