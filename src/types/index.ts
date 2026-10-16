@@ -131,9 +131,9 @@ export interface DatosRentabilidad {
   airbnb_ocupacion_pct: number
 }
 
-// Objeto cotización completo (1 de hasta 4)
+// Objeto cotización completo (1 de hasta MAX_COTIZACIONES = 10)
 export interface Cotizacion {
-  id: number                             // 0, 1, 2 ó 3
+  id: number                             // 0 a 9 (= índice; letra A–J)
   modo_fuente: FuenteDatos               // 'supabase' | 'manual'
   activa: boolean                        // si esta cotización tiene datos
   califica_iva: boolean                  // ☑ checkbox hoja Flujo — ¿la unidad recibe devolución IVA?
@@ -253,7 +253,7 @@ export interface FilaDiversificacion {
 export interface AppState {
   // Datos de la sesión
   global: DatosGlobales
-  cotizaciones: Cotizacion[]             // 1 a 4 elementos
+  cotizaciones: Cotizacion[]             // 1 a 10 elementos
   diversificacion: DatosDiversificacion
 
   // UI state

@@ -4,6 +4,7 @@ import { calcularDiversificacion, calcularIvaTotal } from '@/lib/engines/calculo
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { devolucionIvaPrecioDeptoClp, precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import TablaCashflow60m from './TablaCashflow60m'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
@@ -123,7 +124,6 @@ export default function ModuloFlujo() {
 
   const uf = global.uf_valor_clp
   const cotizacionesActivas = cotizaciones.filter(c => c.activa)
-  const letras = ['A', 'B', 'C', 'D']
 
   const tabla60 = cotizacionesActivas.length > 0
     ? calcularDiversificacion(diversificacion, cotizaciones, uf)
@@ -164,7 +164,7 @@ export default function ModuloFlujo() {
           <button key={c.id}
             className={`cotizacion-tab ${cotizacion_activa_idx === idx ? 'active' : ''}`}
             onClick={() => setCotizacionActiva(idx)}>
-            Cotización {letras[idx]}
+            Cotización {letraCotizacion(idx)}
             {c.activa && <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>✓</span>}
           </button>
         ))}
@@ -226,7 +226,7 @@ export default function ModuloFlujo() {
                       </div>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>
-                          Cotización {letras[c.id]}
+                          Cotización {letraCotizacion(c.id)}
                           <span style={{ marginLeft: 6, color: 'var(--color-text-muted)', fontWeight: 400 }}>
                             {c.propiedad.proyecto_nombre.split(' ')[0]} U{c.propiedad.unidad_numero}
                           </span>

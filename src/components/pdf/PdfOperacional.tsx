@@ -20,6 +20,7 @@ import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -352,7 +353,7 @@ interface ExportarArgs {
  * Renderiza off-screen vía createRoot, captura con html2canvas, comprime y descarga.
  */
 export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, proyectoNombre }: ExportarArgs): Promise<void> {
-  const letra = String.fromCharCode(65 + cot.id)
+  const letra = letraCotizacion(cot.id)
 
   // Container off-screen
   const container = document.createElement('div')

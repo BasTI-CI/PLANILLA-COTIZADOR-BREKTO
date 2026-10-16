@@ -16,6 +16,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 const CHART_TOOLTIP_STYLE = {
   backgroundColor: '#1a2238',
@@ -156,7 +157,7 @@ export default function ModuloResumen() {
                   <tr key={c.id}>
                     <td>
                       <div className="cell-stack">
-                        <span className="badge badge-blue">{String.fromCharCode(65 + c.id)}</span>
+                        <span className="badge badge-blue">{letraCotizacion(c.id)}</span>
                       </div>
                     </td>
                     <td>
@@ -499,7 +500,7 @@ export default function ModuloResumen() {
                 }
               />
               <span>
-                Unidad {idx + 1} — Cot. {String.fromCharCode(65 + c.id)} ·{' '}
+                Unidad {idx + 1} — Cot. {letraCotizacion(c.id)} ·{' '}
                 {c.propiedad.proyecto_nombre.split(' ')[0]} U{c.propiedad.unidad_numero}
                 <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 6 }}>
                   (+{fmtCLP(liquidezPorUnidad[idx])} si se vende)
@@ -593,7 +594,7 @@ export default function ModuloResumen() {
             return (
               <div key={c.id} className="card card-sm" style={{ background: 'var(--color-bg-secondary)' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-gold)', marginBottom: 8 }}>
-                  Cotización {String.fromCharCode(65 + c.id)} — {c.propiedad.proyecto_nombre}
+                  Cotización {letraCotizacion(c.id)} — {c.propiedad.proyecto_nombre}
                 </div>
                 <div className="stat-item" style={{ marginBottom: 6 }}>
                   <span className="stat-label">Plusvalía proyectada 5 años</span>
