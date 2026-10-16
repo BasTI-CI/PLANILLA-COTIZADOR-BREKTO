@@ -3,7 +3,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion, calcularIvaTotal } from '@/lib/engines/calculosDiversificacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import { seriePatrimonioTotalUf, liquidezVentaUnidadClp } from '@/lib/engines/resumenGraficos'
 import TablaCashflow60m from '@/components/flujo/TablaCashflow60m'
@@ -351,8 +351,6 @@ function renderBloqueAE(
   const beneficioUf = r.beneficio_inmobiliario_uf
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
   const piePagar = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pie)
-  const pctRestoBonoPie =
-    pie.pie_pct - pie.upfront_pct - pie.cuotas_antes_entrega_pct - pie.cuotas_despues_entrega_pct - pie.cuoton_pct
   const desg = calcularMontosDesglosePieClp(r.valor_escritura_uf, pie, uf)
   const tieneEst = propiedad.estacionamiento_uf > 0
   const tieneBod = propiedad.bodega_uf > 0
@@ -446,12 +444,14 @@ function renderBloqueAE(
       <SubTitle>C · Pie y Forma de Pago</SubTitle>
       <TablaCot headers={['Concepto', 'Detalle', 'Valor UF', 'Valor CLP']}>
         <Row cells={['Pie a documentar', `${(pie.pie_pct * 100).toFixed(2)}% sobre escrituración`, fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
-        <Row cells={[
-          'Bonificación inmobiliaria (bono pie)',
-          `${(pctRestoBonoPie * 100).toFixed(2)}%`,
-          fmtUF(bonoPie),
-          fmtCLP(bonoPie * uf),
-        ]} />
+        {tieneBonoPie(pie) && (
+          <Row cells={[
+            'Bonificación inmobiliaria (bono pie)',
+            `${(bonoPiePct(pie) * 100).toFixed(2)}% s/ escrituración`,
+            fmtUF(bonoPie),
+            fmtCLP(bonoPie * uf),
+          ]} />
+        )}
         <Row destacada cells={['PIE A PAGAR (cliente)', '—', fmtUF(piePagar), fmtCLP(piePagar * uf)]} />
         <Row cells={[
           'Upfront',
@@ -628,6 +628,7 @@ export default function ModuloPDF() {
 
   // Pre-cálculos compartidos por las hojas 2 y 3
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
+  const hayBonoPie = activas.some((c) => tieneBonoPie(c.pie))
   const tabla60 = activas.length > 0 ? calcularDiversificacion(diversificacion, cotizaciones, uf) : []
   const dataPatrimonio = activas.length > 0 ? seriePatrimonioTotalUf(activas, resultados) : []
   const dataCajaDiv = tabla60.map((f) => ({ mes: f.mes, caja: f.capital_fin }))
@@ -935,7 +936,7 @@ export default function ModuloPDF() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 14 }}>
               <thead>
                 <tr style={{ background: T.accent }}>
-                  {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].map((h) => (
+                  {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].filter((h) => hayBonoPie || h !== 'Bono pie').map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '6px 5px', color: '#ffffff', fontWeight: 700, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {h}
                     </th>
@@ -966,10 +967,18 @@ export default function ModuloPDF() {
                         <div style={{ color: T.gold, fontWeight: 700 }}>{(c.pie.pie_pct * 100).toFixed(0)}%</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(r.pie_total_uf)}</div>
                       </td>
-                      <td style={{ padding: '5px' }}>
-                        <div>{fmtUF(bp)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(bp * uf)}</div>
-                      </td>
+                      {hayBonoPie && (
+                        <td style={{ padding: '5px' }}>
+                          {tieneBonoPie(c.pie) ? (
+                            <>
+                              <div>{(bonoPiePct(c.pie) * 100).toFixed(2)}%</div>
+                              <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(bp)}</div>
+                            </>
+                          ) : (
+                            <div>—</div>
+                          )}
+                        </td>
+                      )}
                       <td style={{ padding: '5px' }}>
                         <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(pp)}</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(pp * uf)}</div>
