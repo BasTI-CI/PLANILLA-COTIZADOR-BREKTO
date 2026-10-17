@@ -14,9 +14,21 @@ function pctRestoBonificacionPie(pie: DatosDesglosePie): number {
   )
 }
 
+/** Umbral bajo el cual el bono pie se considera 0 (absorbe ruido flotante de la resta): 0,005 %. */
+export const BONO_PIE_EPS_PCT = 0.00005
+
+/** % de bono pie sobre `valor_escritura_uf`, nunca negativo. */
+export function bonoPiePct(pie: DatosDesglosePie): number {
+  return Math.max(0, pctRestoBonificacionPie(pie))
+}
+
+/** true si la cotización tiene bono pie distinto de 0 (para decidir si se muestra). */
+export function tieneBonoPie(pie: DatosDesglosePie): boolean {
+  return bonoPiePct(pie) > BONO_PIE_EPS_PCT
+}
+
 export function bonoPieUf(valorEscrituraUf: number, pie: DatosDesglosePie): number {
-  const p = Math.max(0, pctRestoBonificacionPie(pie))
-  return valorEscrituraUf * p
+  return valorEscrituraUf * bonoPiePct(pie)
 }
 
 export function pieAPagarUf(pieTotalUf: number, valorEscrituraUf: number, pie: DatosDesglosePie): number {

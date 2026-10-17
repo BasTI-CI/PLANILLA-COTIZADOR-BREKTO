@@ -216,6 +216,7 @@ input[type='number'] {
 /* ── Cotizaciones — Tabs de selección ─────────────────────────────────── */
 .cotizacion-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 20px;

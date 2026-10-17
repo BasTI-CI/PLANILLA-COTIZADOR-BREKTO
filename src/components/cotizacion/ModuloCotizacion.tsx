@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore'
 import CotizacionForm from './CotizacionForm'
+import { MAX_COTIZACIONES, letraCotizacion } from '@/lib/cotizaciones'
 
 export default function ModuloCotizacion() {
   const {
@@ -17,7 +18,7 @@ export default function ModuloCotizacion() {
             className={`cotizacion-tab ${cotizacion_activa_idx === idx ? 'active' : ''}`}
             onClick={() => setCotizacionActiva(idx)}
           >
-            Cotización {String.fromCharCode(65 + idx)} {/* A, B, C, D */}
+            Cotización {letraCotizacion(idx)}
             {cot.activa && (
               <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>
                 ✓ {cot.propiedad.proyecto_nombre?.split(' ')[0]}
@@ -26,7 +27,7 @@ export default function ModuloCotizacion() {
           </button>
         ))}
 
-        {cotizaciones.length < 4 && (
+        {cotizaciones.length < MAX_COTIZACIONES && (
           <button className="btn-add-cotizacion" onClick={agregarCotizacion}>
             + Agregar cotización
           </button>

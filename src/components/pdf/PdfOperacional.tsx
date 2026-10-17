@@ -18,9 +18,10 @@ import type { Cotizacion, DatosGlobales, ResultadosCotizacion } from '@/types'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
+import { letraCotizacion } from '@/lib/cotizaciones'
 import { useAppStore } from '@/store/useAppStore'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
@@ -100,9 +101,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const beneficioUf = r.beneficio_inmobiliario_uf  // BI sobre tasación (depto)
   // SUBTOTAL = depto post-descuentos + adicionales (sin BI). Igual a precio_compra_total_uf por construcción.
   const subtotalUf = r.precio_compra_total_uf
-  // BONIFICACIÓN AL PIE (B) = delta entre subtotal y valor escrituración. Por construcción del motor:
+  // BONIFICACIÓN INMOBILIARIA (BI) = delta entre subtotal y valor escrituración. Por construcción del motor:
   // valor_escritura - precio_compra_total = beneficio inmobiliario sobre la base (con/sin BI repercutido en adicionales).
-  const bonificacionAlPieUf = r.valor_escritura_uf - r.precio_compra_total_uf
+  // No confundir con el bono pie (sección C.1).
+  const bonificacionInmobiliariaUf = r.valor_escritura_uf - r.precio_compra_total_uf
   const valorFinalUf = r.valor_escritura_uf
 
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
@@ -216,18 +218,29 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
             `Depto ${fmtUF(pcDeptoUf)}${tieneEst ? ` · Est ${fmtUF(propiedad.estacionamiento_uf)}` : ''}${tieneBod ? ` · Bod ${fmtUF(propiedad.bodega_uf)}` : ''}`,
           ].join(' · ')}
         />
-        <StatBox label="Bonificación al pie" value={fmtUF(bonificacionAlPieUf)} sub={fmtCLP(bonificacionAlPieUf * uf)} />
+        <StatBox
+          label={`Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`}
+          value={fmtUF(bonificacionInmobiliariaUf)}
+          sub={fmtCLP(bonificacionInmobiliariaUf * uf)}
+        />
         <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
 
       {/* C.1 Pie a documentar (referencia, antes del desglose) */}
       <SubTitle>C.1 · Pie y forma de pago</SubTitle>
-      <Grid cols={1}>
+      <Grid cols={tieneBonoPie(pie) ? 2 : 1}>
         <StatBox
           label={`Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
         />
+        {tieneBonoPie(pie) && (
+          <StatBox
+            label={`Bono pie (${(bonoPiePct(pie) * 100).toFixed(2)}% s/ escrituración)`}
+            value={fmtUF(bonoPie)}
+            sub={fmtCLP(bonoPie * uf)}
+          />
+        )}
       </Grid>
 
       {/* C.2 Pie a pagar + desglose horizontal de cuotas */}
@@ -352,7 +365,7 @@ interface ExportarArgs {
  * Renderiza off-screen vía createRoot, captura con html2canvas, comprime y descarga.
  */
 export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, proyectoNombre }: ExportarArgs): Promise<void> {
-  const letra = String.fromCharCode(65 + cot.id)
+  const letra = letraCotizacion(cot.id)
 
   // Container off-screen
   const container = document.createElement('div')

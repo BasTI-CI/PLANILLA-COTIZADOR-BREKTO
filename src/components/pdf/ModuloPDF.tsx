@@ -3,7 +3,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion, calcularIvaTotal, devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import { seriePatrimonioTotalUf, liquidezVentaUnidadClp } from '@/lib/engines/resumenGraficos'
 import TablaCashflow60m from '@/components/flujo/TablaCashflow60m'
@@ -13,6 +13,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import type { Cotizacion, DatosDiversificacion, PromocionesCotizacion, ResultadosCotizacion } from '@/types'
 import { DEFAULT_PROMOCIONES } from '@/types'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
+import { MAX_COTIZACIONES, letraCotizacion } from '@/lib/cotizaciones'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -60,11 +61,15 @@ const SECCIONES = [
   { id: 'portada', label: 'Hoja 1 — Portada', icon: '🏢' },
   { id: 'resumen', label: 'Hoja 2 — Comparativa + KPIs', icon: '📊' },
   { id: 'flujo', label: 'Hoja 3 — Gráficos + Tabla anual', icon: '💰' },
-  { id: 'cotA', label: 'Cotización A (2 hojas)', icon: '🏠' },
-  { id: 'cotB', label: 'Cotización B (2 hojas)', icon: '🏠' },
-  { id: 'cotC', label: 'Cotización C (2 hojas)', icon: '🏠' },
-  { id: 'cotD', label: 'Cotización D (2 hojas)', icon: '🏠' },
+  ...Array.from({ length: MAX_COTIZACIONES }, (_, i) => ({
+    id: `cot${letraCotizacion(i)}`,
+    label: `Cotización ${letraCotizacion(i)} (2 hojas)`,
+    icon: '🏠',
+  })),
 ]
+
+/** Cotizaciones por hoja en la comparativa (Hoja 2). */
+const COMPARATIVA_POR_HOJA = 5
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -364,8 +369,6 @@ function renderBloqueAE(
   const beneficioUf = r.beneficio_inmobiliario_uf
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
   const piePagar = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pie)
-  const pctRestoBonoPie =
-    pie.pie_pct - pie.upfront_pct - pie.cuotas_antes_entrega_pct - pie.cuotas_despues_entrega_pct - pie.cuoton_pct
   const desg = calcularMontosDesglosePieClp(r.valor_escritura_uf, pie, uf)
   const tieneEst = propiedad.estacionamiento_uf > 0
   const tieneBod = propiedad.bodega_uf > 0
@@ -459,12 +462,14 @@ function renderBloqueAE(
       <SubTitle>C · Pie y Forma de Pago</SubTitle>
       <TablaCot headers={['Concepto', 'Detalle', 'Valor UF', 'Valor CLP']}>
         <Row cells={['Pie a documentar', `${(pie.pie_pct * 100).toFixed(2)}% sobre escrituración`, fmtUF(r.pie_total_uf), fmtCLP(r.pie_total_clp)]} />
-        <Row cells={[
-          'Bonificación inmobiliaria (bono pie)',
-          `${(pctRestoBonoPie * 100).toFixed(2)}%`,
-          fmtUF(bonoPie),
-          fmtCLP(bonoPie * uf),
-        ]} />
+        {tieneBonoPie(pie) && (
+          <Row cells={[
+            'Bonificación inmobiliaria (bono pie)',
+            `${(bonoPiePct(pie) * 100).toFixed(2)}% s/ escrituración`,
+            fmtUF(bonoPie),
+            fmtCLP(bonoPie * uf),
+          ]} />
+        )}
         <Row destacada cells={['PIE A PAGAR (cliente)', '—', fmtUF(piePagar), fmtCLP(piePagar * uf)]} />
         <Row cells={[
           'Upfront',
@@ -631,9 +636,11 @@ function renderBloqueFG(
 export default function ModuloPDF() {
   const { cotizaciones, global, diversificacion } = useAppStore()
   const uf = global.uf_valor_clp
-  const [secciones, setSecciones] = useState<Set<string>>(
-    new Set(['portada', 'cotA', 'resumen', 'flujo'])
-  )
+  // Por defecto van marcadas todas las cotizaciones activas al montar la pestaña.
+  const [secciones, setSecciones] = useState<Set<string>>(() => new Set([
+    'portada', 'resumen', 'flujo',
+    ...cotizaciones.filter((c) => c.activa).map((c) => `cot${letraCotizacion(c.id)}`),
+  ]))
   const [anexoTabla60m, setAnexoTabla60m] = useState(false)
   const [generando, setGenerando] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -650,10 +657,10 @@ export default function ModuloPDF() {
     })
 
   const activas = cotizaciones.filter((c) => c.activa)
-  const letras = ['A', 'B', 'C', 'D']
 
   // Pre-cálculos compartidos por las hojas 2 y 3
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
+  const hayBonoPie = activas.some((c) => tieneBonoPie(c.pie))
   const tabla60 = activas.length > 0 ? calcularDiversificacion(diversificacion, cotizaciones, uf) : []
   const dataPatrimonio = activas.length > 0 ? seriePatrimonioTotalUf(activas, resultados) : []
   const dataCajaDiv = tabla60.map((f) => ({ mes: f.mes, caja: f.capital_fin }))
@@ -661,6 +668,15 @@ export default function ModuloPDF() {
     (sum, c, i) => sum + liquidezVentaUnidadClp(c, resultados[i], uf),
     0
   )
+
+  // Selector manda en portada y hoja 2. Pares {c, r} antes de filtrar: `resultados` va por posición en `activas`.
+  const enPropuesta = activas
+    .map((c, i) => ({ c, r: resultados[i] }))
+    .filter(({ c }) => secciones.has(`cot${letraCotizacion(c.id)}`))
+  const bloquesPropuesta: (typeof enPropuesta)[] = []
+  for (let i = 0; i < enPropuesta.length; i += COMPARATIVA_POR_HOJA) {
+    bloquesPropuesta.push(enPropuesta.slice(i, i + COMPARATIVA_POR_HOJA))
+  }
   const dataFinFinal = dataCajaDiv.map((row, idx) =>
     idx === dataCajaDiv.length - 1 ? { ...row, caja: row.caja + extraVentaM60 } : row
   )
@@ -786,7 +802,7 @@ export default function ModuloPDF() {
           </div>
           <div className="pdf-sections-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
             {SECCIONES.map((s) => {
-              const idx = letras.indexOf(s.id.replace('cot', ''))
+              const idx = s.id.startsWith('cot') ? s.id.charCodeAt(3) - 65 : -1
               const disponible =
                 s.id === 'portada' || s.id === 'resumen' || s.id === 'flujo' || (idx >= 0 && cotizaciones[idx]?.activa)
               if (!disponible) return null
@@ -932,7 +948,7 @@ export default function ModuloPDF() {
               </div>
             </div>
 
-            {activas.length > 0 && (
+            {enPropuesta.length > 0 && (
               <>
                 <div style={{ ...subTitleStyle, marginTop: 8 }}>Unidades cotizadas</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -945,9 +961,9 @@ export default function ModuloPDF() {
                     </tr>
                   </thead>
                   <tbody>
-                    {activas.map((c) => (
+                    {enPropuesta.map(({ c }) => (
                       <tr key={c.id}>
-                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, color: T.gold }}>{letras[c.id]}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
                         <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>
                           {c.propiedad.proyecto_nombre}
                           <span style={{ color: T.muted, fontSize: 11 }}> · {c.propiedad.proyecto_comuna}</span>
@@ -965,15 +981,20 @@ export default function ModuloPDF() {
         )}
 
         {/* HOJA 2 — Comparativa + KPIs (landscape) */}
-        {secciones.has('resumen') && activas.length > 0 && (
-          <PdfPage orientation="landscape" label="Comparativa" innerPadding="10mm">
+        {secciones.has('resumen') && enPropuesta.length > 0 && bloquesPropuesta.map((bloque, b) => (
+          <PdfPage
+            key={`comparativa-${b}`}
+            orientation="landscape"
+            label={bloquesPropuesta.length > 1 ? `Comparativa ${b + 1}/${bloquesPropuesta.length}` : 'Comparativa'}
+            innerPadding="10mm"
+          >
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              📊 Comparativa de Cotizaciones
+              📊 Comparativa de Cotizaciones{bloquesPropuesta.length > 1 ? ` (${b + 1} de ${bloquesPropuesta.length})` : ''}
             </h2>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 14 }}>
               <thead>
                 <tr style={{ background: T.accent }}>
-                  {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].map((h) => (
+                  {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].filter((h) => hayBonoPie || h !== 'Bono pie').map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '6px 5px', color: '#ffffff', fontWeight: 700, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {h}
                     </th>
@@ -981,13 +1002,12 @@ export default function ModuloPDF() {
                 </tr>
               </thead>
               <tbody>
-                {activas.map((c, i) => {
-                  const r = resultados[i]
+                {bloque.map(({ c, r }) => {
                   const bp = bonoPieUf(r.valor_escritura_uf, c.pie)
                   const pp = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, c.pie)
                   return (
                     <tr key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
-                      <td style={{ padding: '5px', fontWeight: 700, color: T.gold }}>{letras[c.id]}</td>
+                      <td style={{ padding: '5px', fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
                       <td style={{ padding: '5px' }}>
                         <div style={{ fontWeight: 700 }}>{c.propiedad.proyecto_nombre}</div>
                         <div style={{ fontSize: 8, color: T.muted }}>U. {c.propiedad.unidad_numero} · {c.propiedad.proyecto_comuna}</div>
@@ -1004,10 +1024,18 @@ export default function ModuloPDF() {
                         <div style={{ color: T.gold, fontWeight: 700 }}>{(c.pie.pie_pct * 100).toFixed(0)}%</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(r.pie_total_uf)}</div>
                       </td>
-                      <td style={{ padding: '5px' }}>
-                        <div>{fmtUF(bp)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(bp * uf)}</div>
-                      </td>
+                      {hayBonoPie && (
+                        <td style={{ padding: '5px' }}>
+                          {tieneBonoPie(c.pie) ? (
+                            <>
+                              <div>{(bonoPiePct(c.pie) * 100).toFixed(2)}%</div>
+                              <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(bp)}</div>
+                            </>
+                          ) : (
+                            <div>—</div>
+                          )}
+                        </td>
+                      )}
                       <td style={{ padding: '5px' }}>
                         <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(pp)}</div>
                         <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(pp * uf)}</div>
@@ -1028,13 +1056,12 @@ export default function ModuloPDF() {
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
               🎯 KPIs de Inversión
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(activas.length, 1)}, 1fr)`, gap: 10 }}>
-              {activas.map((c, i) => {
-                const r = resultados[i]
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, COMPARATIVA_POR_HOJA)}, 1fr)`, gap: 10 }}>
+              {bloque.map(({ c, r }) => {
                 return (
                   <div key={c.id} style={{ padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
                     <div style={{ fontSize: 10, color: T.accent, marginBottom: 8, fontWeight: 700 }}>
-                      Cotización {letras[c.id]} — {c.propiedad.proyecto_nombre}
+                      Cotización {letraCotizacion(c.id)} — {c.propiedad.proyecto_nombre}
                     </div>
                     <div style={{ marginBottom: 6 }}>
                       <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Plusvalía proyectada 5 años</div>
@@ -1069,7 +1096,7 @@ export default function ModuloPDF() {
               })}
             </div>
           </PdfPage>
-        )}
+        ))}
 
         {/* HOJA 3 — Gráficos + Tabla resumen anual (landscape) */}
         {secciones.has('flujo') && activas.length > 0 && tabla60.length > 0 && (
@@ -1156,7 +1183,7 @@ export default function ModuloPDF() {
 
         {/* HOJAS 4+ — por cada cotización activa: 2 hojas portrait (Resumen general + A–C en la primera; D–F + Política en la segunda) */}
         {activas.map((c) => {
-          const letra = letras[c.id]
+          const letra = letraCotizacion(c.id)
           if (!secciones.has(`cot${letra}`)) return null
           const r = calcularResultadosCotizacion(c, uf)
           return (
