@@ -74,7 +74,10 @@ const SECCIONES = [
 const COMPARATIVA_POR_HOJA = 10
 
 /** Tarjetas por hoja en los KPIs de la inversión (Hoja 3). */
-const KPIS_POR_HOJA = 5
+const KPIS_POR_HOJA = 10
+
+/** Columnas de la grilla de KPIs: con 6–10 tarjetas quedan 2 filas. */
+const KPIS_COLUMNAS = 5
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -1086,7 +1089,7 @@ export default function ModuloPDF() {
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
               🎯 KPIs de la inversión{bloquesKpis.length > 1 ? ` (${b + 1} de ${bloquesKpis.length})` : ''}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, KPIS_POR_HOJA)}, 1fr)`, gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, KPIS_COLUMNAS)}, 1fr)`, gap: 10 }}>
               {bloque.map(({ c, r }) => {
                 return (
                   <div key={c.id} style={{ padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
