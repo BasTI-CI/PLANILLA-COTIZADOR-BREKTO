@@ -535,6 +535,10 @@ function renderBloqueFG(
     ? 'Devolución de IVA (manual, prorrateada)'
     : 'Devolución de IVA (15% s/ precio compra depto)'
 
+  const filaDividendo = contado
+    ? <Row cells={['Dividendo (compra contado: sin crédito)', fmtUF(0), fmtCLP(0)]} />
+    : <Row cells={['Dividendo (mensual)', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
+
   return (
     <>
       <CotBandaSuperior c={c} letra={letra} hojaLabel="Hoja 2 de 2" uf={uf} />
@@ -576,52 +580,30 @@ function renderBloqueFG(
             ? [ivaLabel, 'No aplica', 'No aplica']
             : [ivaLabel, uf > 0 ? fmtUF(ivaClp / uf) : '—', fmtCLP(ivaClp)]
         } />
-        <Row separador cells={['Arriendo', '', '']} />
-        {!contado && (
-          <Row cells={[
-            'Dividendo (mensual)',
-            fmtUF(r.hipotecario.dividendo_total_uf),
-            fmtCLP(r.hipotecario.dividendo_total_clp),
-          ]} />
-        )}
-        {r.arriendo.tiene_ag ? (
+      </TablaCot>
+
+      {/* Relación Arriendo / Dividendo (B-08) — sin letra; AG solo si aplica (§3.5.1), mercado siempre.
+          El monto va en la fila-título de cada apartado para que la Hoja 2 no se corte. */}
+      <SubTitle>Relación Arriendo / Dividendo</SubTitle>
+      <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
+        {r.arriendo.tiene_ag && (
           <>
-            {/* §3.5.1 · AG meses 1…N; arriendo de mercado desde N+1. */}
-            <Row cells={[
-              `Arriendo garantizado (meses 1–${r.arriendo.ag_meses})`,
-              '—',
-              fmtCLP(r.arriendo.arriendo_garantizado_clp),
-            ]} />
-            <Row destacada cells={[
-              'Diferencia arriendo garantizado − dividendo',
-              '—',
-              fmtCLP(r.arriendo.diferencia_div_ag_clp),
-            ]} />
-            <Row cells={[
-              `Arriendo promedio zona (desde mes ${r.arriendo.ag_meses + 1})`,
-              '—',
-              fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
-            ]} />
-            <Row destacada cells={[
-              'Diferencia arriendo de mercado − dividendo',
-              '—',
-              fmtCLP(r.arriendo.diferencia_div_mercado_clp),
-            ]} />
-          </>
-        ) : (
-          <>
-            <Row cells={[
-              renta === 'corta' ? 'Arriendo proyectado renta corta (mensual)' : 'Arriendo proyectado mensual',
-              '—',
-              fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
-            ]} />
-            <Row destacada cells={[
-              contado ? 'Resultado mensual (compra contado, sin dividendo)' : 'Resultado mensual (arriendo − dividendo)',
-              '—',
-              fmtCLP(r.arriendo.resultado_mensual_clp),
-            ]} />
+            <Row separador cells={[`Arriendo garantizado (${r.arriendo.ag_meses} meses)`, '—', fmtCLP(r.arriendo.arriendo_garantizado_clp)]} />
+            {filaDividendo}
+            <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.diferencia_div_ag_clp)]} />
           </>
         )}
+        <Row separador cells={[
+          renta === 'corta'
+            ? 'Arriendo renta corta (neto mensual)'
+            : r.arriendo.tiene_ag
+              ? `Arriendo de mercado (desde mes ${r.arriendo.ag_meses + 1})`
+              : 'Arriendo de mercado',
+          '—',
+          fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
+        ]} />
+        {filaDividendo}
+        <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.resultado_mensual_clp)]} />
       </TablaCot>
 
       <SubTitle>F · Promociones de la Cotización</SubTitle>
