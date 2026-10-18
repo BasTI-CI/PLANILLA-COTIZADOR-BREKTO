@@ -60,8 +60,9 @@ function leyendaPromociones(p: PromocionesCotizacion | undefined): string[] {
 
 const SECCIONES = [
   { id: 'portada', label: 'Hoja 1 — Portada', icon: '🏢' },
-  { id: 'resumen', label: 'Hoja 2 — Comparativa + KPIs', icon: '📊' },
-  { id: 'flujo', label: 'Hoja 3 — Gráficos + Tabla anual', icon: '💰' },
+  { id: 'resumen', label: 'Hoja 2 — Comparativa de cotizaciones', icon: '📊' },
+  { id: 'kpis', label: 'Hoja 3 — KPIs de la inversión', icon: '🎯' },
+  { id: 'flujo', label: 'Hoja 4 — Gráficos + Tabla anual', icon: '💰' },
   ...Array.from({ length: MAX_COTIZACIONES }, (_, i) => ({
     id: `cot${letraCotizacion(i)}`,
     label: `Cotización ${letraCotizacion(i)} (2 hojas)`,
@@ -69,7 +70,7 @@ const SECCIONES = [
   })),
 ]
 
-/** Cotizaciones por hoja en la comparativa (Hoja 2). */
+/** Cotizaciones por hoja en la comparativa y en los KPIs (Hojas 2 y 3). */
 const COMPARATIVA_POR_HOJA = 5
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
@@ -660,7 +661,7 @@ export default function ModuloPDF() {
   const uf = global.uf_valor_clp
   // Por defecto van marcadas todas las cotizaciones activas al montar la pestaña.
   const [secciones, setSecciones] = useState<Set<string>>(() => new Set([
-    'portada', 'resumen', 'flujo',
+    'portada', 'resumen', 'kpis', 'flujo',
     ...cotizaciones.filter((c) => c.activa).map((c) => `cot${letraCotizacion(c.id)}`),
   ]))
   const [anexoTabla60m, setAnexoTabla60m] = useState(false)
@@ -680,7 +681,7 @@ export default function ModuloPDF() {
 
   const activas = cotizaciones.filter((c) => c.activa)
 
-  // Pre-cálculos compartidos por las hojas 2 y 3
+  // Pre-cálculos compartidos por las hojas 2 a 4
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
   // B-04: en compra contado el pie efectivo no tiene bono pie.
   const hayBonoPie = activas.some((c) => tieneBonoPie(cotizacionEfectiva(c).pie))
@@ -692,7 +693,7 @@ export default function ModuloPDF() {
     0
   )
 
-  // Selector manda en portada y hoja 2. Pares {c, r} antes de filtrar: `resultados` va por posición en `activas`.
+  // Selector manda en portada, comparativa y KPIs. Pares {c, r} antes de filtrar: `resultados` va por posición en `activas`.
   const enPropuesta = activas
     .map((c, i) => ({ c, r: resultados[i] }))
     .filter(({ c }) => secciones.has(`cot${letraCotizacion(c.id)}`))
@@ -827,7 +828,7 @@ export default function ModuloPDF() {
             {SECCIONES.map((s) => {
               const idx = s.id.startsWith('cot') ? s.id.charCodeAt(3) - 65 : -1
               const disponible =
-                s.id === 'portada' || s.id === 'resumen' || s.id === 'flujo' || (idx >= 0 && cotizaciones[idx]?.activa)
+                s.id === 'portada' || s.id === 'resumen' || s.id === 'kpis' || s.id === 'flujo' || (idx >= 0 && cotizaciones[idx]?.activa)
               if (!disponible) return null
               return (
                 <div
@@ -1003,7 +1004,7 @@ export default function ModuloPDF() {
           </PdfPage>
         )}
 
-        {/* HOJA 2 — Comparativa + KPIs (landscape) */}
+        {/* HOJA 2 — Comparativa de cotizaciones: solo la tabla (landscape) */}
         {secciones.has('resumen') && enPropuesta.length > 0 && bloquesPropuesta.map((bloque, b) => (
           <PdfPage
             key={`comparativa-${b}`}
@@ -1083,9 +1084,19 @@ export default function ModuloPDF() {
                 })}
               </tbody>
             </table>
+          </PdfPage>
+        ))}
 
+        {/* HOJA 3 — KPIs de la inversión (landscape) */}
+        {secciones.has('kpis') && enPropuesta.length > 0 && bloquesPropuesta.map((bloque, b) => (
+          <PdfPage
+            key={`kpis-${b}`}
+            orientation="landscape"
+            label={bloquesPropuesta.length > 1 ? `KPIs ${b + 1}/${bloquesPropuesta.length}` : 'KPIs'}
+            innerPadding="10mm"
+          >
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              🎯 KPIs de Inversión
+              🎯 KPIs de la inversión{bloquesPropuesta.length > 1 ? ` (${b + 1} de ${bloquesPropuesta.length})` : ''}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, COMPARATIVA_POR_HOJA)}, 1fr)`, gap: 10 }}>
               {bloque.map(({ c, r }) => {
@@ -1129,7 +1140,7 @@ export default function ModuloPDF() {
           </PdfPage>
         ))}
 
-        {/* HOJA 3 — Gráficos + Tabla resumen anual (landscape) */}
+        {/* HOJA 4 — Gráficos + Tabla resumen anual (landscape) */}
         {secciones.has('flujo') && activas.length > 0 && tabla60.length > 0 && (
           <PdfPage orientation="landscape" label="Gráficos" innerPadding="10mm">
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 700, marginBottom: 6, color: T.accent }}>
