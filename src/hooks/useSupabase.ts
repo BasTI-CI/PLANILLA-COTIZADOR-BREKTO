@@ -12,6 +12,7 @@ import { INMOBILIARIA_IMAGINA, PROYECTO_IMAGINA } from '@/lib/stock/imaginaPrueb
 import { getTipologias } from '@/lib/tipologias'
 import { getStock } from '@/lib/getStock'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { cargarUF } from '@/lib/uf'
 
 const stockRepo = createDefaultStockRepository()
 
@@ -326,38 +327,20 @@ export function useUF() {
   const [loading, setLoading] = useState(true)
   const [esFallback, setEsFallback] = useState(false)
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 6000)   // 6s timeout
-
-    async function fetchUF() {
-      try {
-        const res = await fetch('https://mindicador.cl/api/uf', {
-          signal: controller.signal,
-        })
-        const data = await res.json()
-        const valor: number | undefined = data?.serie?.[0]?.valor
-        const fechaISO: string | undefined = data?.serie?.[0]?.fecha
-        if (valor && valor > 0) {
-          setUF(valor)
-          if (fechaISO) {
-            setFecha(new Date(fechaISO).toLocaleDateString('es-CL', {
-              day: '2-digit', month: '2-digit', year: 'numeric',
-            }))
-          }
-        } else {
-          setEsFallback(true)
-        }
-      } catch {
-        setEsFallback(true)       // timeout o CORS → fallback silencioso
-      } finally {
-        clearTimeout(timeout)
-        setLoading(false)
+  useEffect(() => cargarUF((r) => {
+    if (r.ok) {
+      setUF(r.valor)
+      if (r.fechaISO) {
+        setFecha(new Date(r.fechaISO).toLocaleDateString('es-CL', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+        }))
       }
+      setEsFallback(false)
+    } else {
+      setEsFallback(true)       // timeout, red o CORS → fallback silencioso
     }
-    fetchUF()
-    return () => { controller.abort(); clearTimeout(timeout) }
-  }, [])
+    setLoading(false)
+  }), [])
 
   return { uf, fecha, loading, esFallback }
 }
