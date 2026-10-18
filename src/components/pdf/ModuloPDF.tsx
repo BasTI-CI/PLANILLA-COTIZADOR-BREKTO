@@ -543,7 +543,7 @@ function renderBloqueFG(
 
   const filaDividendo = contado
     ? <Row cells={['Dividendo (compra contado: sin crédito)', fmtUF(0), fmtCLP(0)]} />
-    : <Row cells={['Dividendo (mensual)', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
+    : <Row cells={['Dividendo mensual', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
 
   return (
     <>
@@ -589,13 +589,13 @@ function renderBloqueFG(
       </TablaCot>
 
       {/* Relación Arriendo / Dividendo (B-08) — sin letra; AG solo si aplica (§3.5.1), mercado siempre.
-          El monto va en la fila-título de cada apartado para que la Hoja 2 no se corte. */}
+          Dividendo una sola vez arriba; el monto va en la fila-título de cada apartado para que la Hoja 2 no se corte. */}
       <SubTitle>Relación Arriendo / Dividendo</SubTitle>
       <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
+        {filaDividendo}
         {r.arriendo.tiene_ag && (
           <>
             <Row separador cells={[`Arriendo garantizado (${r.arriendo.ag_meses} meses)`, '—', fmtCLP(r.arriendo.arriendo_garantizado_clp)]} />
-            {filaDividendo}
             <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.diferencia_div_ag_clp)]} />
           </>
         )}
@@ -608,7 +608,6 @@ function renderBloqueFG(
           '—',
           fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
         ]} />
-        {filaDividendo}
         <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.resultado_mensual_clp)]} />
       </TablaCot>
 
