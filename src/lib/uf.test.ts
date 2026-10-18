@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cargarUF, type ResultadoUF } from './uf'
+import { cargarUF, debeAvisarUFRespaldo, type ResultadoUF } from './uf'
 
 const FECHA = '2026-10-17T03:00:00.000Z'
 
@@ -94,5 +94,20 @@ describe('cargarUF', () => {
     await vi.runAllTimersAsync()
     expect(on).toHaveBeenCalledTimes(1)
     expect(on).toHaveBeenCalledWith({ ok: false })
+  })
+})
+
+describe('debeAvisarUFRespaldo', () => {
+  it('respaldo, sin editar y ya cargada → avisa', () => {
+    expect(debeAvisarUFRespaldo(true, false, false)).toBe(true)
+  })
+  it('editada a mano → no avisa', () => {
+    expect(debeAvisarUFRespaldo(true, true, false)).toBe(false)
+  })
+  it('UF real (sin respaldo) → no avisa', () => {
+    expect(debeAvisarUFRespaldo(false, false, false)).toBe(false)
+  })
+  it('todavía cargando → no avisa', () => {
+    expect(debeAvisarUFRespaldo(true, false, true)).toBe(false)
   })
 })
