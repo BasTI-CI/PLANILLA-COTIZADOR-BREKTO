@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useUF } from '@/hooks/useSupabase'
+import { debeAvisarUFRespaldo } from '@/lib/uf'
 import ModuloCotizacion from '@/components/cotizacion/ModuloCotizacion'
 
 /** Carga diferida: mismos componentes y mismos resultados; solo se parte el bundle inicial. */
@@ -38,6 +39,9 @@ export default function App() {
   const { setUfValor, global } = useAppStore()
   const [ufInput, setUfInput] = useState<string>('')
   const [editingUF, setEditingUF] = useState(false)
+  const [ufEditadaAMano, setUfEditadaAMano] = useState(false)
+  /** Borrador del input de la barra de aviso: se aplica al confirmar, no por tecla. */
+  const [ufAvisoInput, setUfAvisoInput] = useState<string>('')
 
   useEffect(() => {
     if (uf && !ufLoading) {
@@ -49,8 +53,15 @@ export default function App() {
   const handleUFChange = (val: string) => {
     setUfInput(val)
     const num = parseFloat(val.replace(/\./g, '').replace(',', '.'))
-    if (!isNaN(num) && num > 0) setUfValor(num)
+    if (!isNaN(num) && num > 0) {
+      setUfValor(num)
+      setUfEditadaAMano(true)
+    }
   }
+
+  const mostrarAvisoUF = debeAvisarUFRespaldo(esFallback, ufEditadaAMano, ufLoading)
+  const fmtUF = (v: number) =>
+    v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
     <div className="app-layout">
@@ -86,8 +97,10 @@ export default function App() {
           )}
           {ufLoading && <div className="loading-spinner" style={{ width: 14, height: 14 }} />}
           {!ufLoading && (
-            <span style={{ fontSize: 10, color: esFallback ? '#f59e0b' : 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {esFallback ? (
+            <span style={{ fontSize: 10, color: esFallback && !ufEditadaAMano ? '#f59e0b' : 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {ufEditadaAMano ? (
+                <span title="UF ingresada manualmente">✎ ingresada a mano</span>
+              ) : esFallback ? (
                 <><span title="Usando valor de referencia — no se pudo contactar mindicador.cl">⚠️ referencia</span></>
               ) : (
                 <>
@@ -103,6 +116,31 @@ export default function App() {
           {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </div>
       </header>
+
+      {/* Aviso de UF de respaldo: fuera de .header-center para que se vea en cualquier ancho */}
+      {mostrarAvisoUF && (
+        <div className="uf-aviso" role="alert">
+          <span>
+            ⚠️ No se pudo obtener la UF del día desde mindicador.cl. Se está usando un valor de
+            respaldo (${fmtUF(uf)}) que no es el de hoy. Ingresa la UF del día:
+          </span>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleUFChange(ufAvisoInput)
+            }}
+          >
+            <input
+              value={ufAvisoInput}
+              onChange={(e) => setUfAvisoInput(e.target.value)}
+              placeholder="Ej: 41.173,33"
+              inputMode="decimal"
+              aria-label="UF del día"
+            />
+            <button type="submit">Usar</button>
+          </form>
+        </div>
+      )}
 
       {/* ── Main ── */}
       <main className="main-content fade-in">

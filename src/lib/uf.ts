@@ -49,3 +49,12 @@ export function cargarUF(
     clearTimeout(timeout)
   }
 }
+
+/** Barra de aviso: la UF es de respaldo y nadie la ha corregido a mano. */
+export function debeAvisarUFRespaldo(
+  esFallback: boolean,
+  editadaAMano: boolean,
+  loading: boolean,
+): boolean {
+  return !loading && esFallback && !editadaAMano
+}
