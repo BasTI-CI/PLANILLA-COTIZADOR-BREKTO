@@ -1,7 +1,7 @@
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useUF } from '@/hooks/useSupabase'
-import { debeAvisarUFRespaldo } from '@/lib/uf'
+import { debeAvisarUFRespaldo, parsearUF, ufFueraDeRango } from '@/lib/uf'
 import ModuloCotizacion from '@/components/cotizacion/ModuloCotizacion'
 
 /** Carga diferida: mismos componentes y mismos resultados; solo se parte el bundle inicial. */
@@ -40,28 +40,65 @@ export default function App() {
   const [ufInput, setUfInput] = useState<string>('')
   const [editingUF, setEditingUF] = useState(false)
   const [ufEditadaAMano, setUfEditadaAMano] = useState(false)
+  /** Espejo de ufEditadaAMano para el efecto de mindicador, sin volver a dispararlo (P-09). */
+  const ufEditadaAManoRef = useRef(false)
+  /** Edición del header: texto al abrir y si se canceló con Escape (se aplica solo en onBlur). */
+  const ufInputAlAbrirRef = useRef('')
+  const ufEdicionCanceladaRef = useRef(false)
   /** Borrador del input de la barra de aviso: se aplica al confirmar, no por tecla. */
   const [ufAvisoInput, setUfAvisoInput] = useState<string>('')
 
   useEffect(() => {
-    if (uf && !ufLoading) {
+    // Una UF ingresada a mano no la pisa la respuesta tardía de mindicador (P-09)
+    if (uf && !ufLoading && !ufEditadaAManoRef.current) {
       setUfValor(uf)
       setUfInput(uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     }
   }, [uf, ufLoading])
 
-  const handleUFChange = (val: string) => {
-    setUfInput(val)
-    const num = parseFloat(val.replace(/\./g, '').replace(',', '.'))
-    if (!isNaN(num) && num > 0) {
-      setUfValor(num)
-      setUfEditadaAMano(true)
+  const fmtUF = (v: number) =>
+    v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  /** Único camino para aplicar una UF escrita a mano (barra y header). Fuera de rango pide confirmación (P-10). */
+  const aplicarUFManual = (texto: string): boolean => {
+    const num = parsearUF(texto)
+    if (num === null) return false
+    if (
+      ufFueraDeRango(num) &&
+      !window.confirm(
+        `La UF ingresada ($${fmtUF(num)}) está fuera del rango esperado ($30.000 – $60.000). ¿Aplicarla de todas formas?`,
+      )
+    ) {
+      return false
     }
+    setUfValor(num)
+    ufEditadaAManoRef.current = true
+    setUfEditadaAMano(true)
+    setUfInput(fmtUF(num))
+    return true
+  }
+
+  const abrirEdicionUF = () => {
+    const texto = ufLoading ? '' : fmtUF(global.uf_valor_clp)
+    ufInputAlAbrirRef.current = texto
+    ufEdicionCanceladaRef.current = false
+    setUfInput(texto)
+    setEditingUF(true)
+  }
+
+  const cerrarEdicionUF = () => {
+    const cancelada = ufEdicionCanceladaRef.current
+    ufEdicionCanceladaRef.current = false
+    setEditingUF(false)
+    // Sin cambios no cuenta como edición manual
+    if (cancelada || ufInput === ufInputAlAbrirRef.current) {
+      setUfInput(ufInputAlAbrirRef.current)
+      return
+    }
+    if (!aplicarUFManual(ufInput)) setUfInput(ufInputAlAbrirRef.current)
   }
 
   const mostrarAvisoUF = debeAvisarUFRespaldo(esFallback, ufEditadaAMano, ufLoading)
-  const fmtUF = (v: number) =>
-    v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
     <div className="app-layout">
@@ -81,14 +118,21 @@ export default function App() {
             <input
               className="uf-input"
               value={ufInput}
-              onChange={(e) => handleUFChange(e.target.value)}
-              onBlur={() => setEditingUF(false)}
+              onChange={(e) => setUfInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') {
+                  ufEdicionCanceladaRef.current = true
+                  e.currentTarget.blur()
+                }
+              }}
+              onBlur={cerrarEdicionUF}
               autoFocus
             />
           ) : (
             <span
               className="uf-value"
-              onClick={() => setEditingUF(true)}
+              onClick={abrirEdicionUF}
               title="Clic para editar manualmente"
               style={{ cursor: 'pointer' }}
             >
@@ -127,7 +171,7 @@ export default function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              handleUFChange(ufAvisoInput)
+              aplicarUFManual(ufAvisoInput)
             }}
           >
             <input

@@ -58,3 +58,21 @@ export function debeAvisarUFRespaldo(
 ): boolean {
   return !loading && esFallback && !editadaAMano
 }
+
+/** Rango esperado de la UF; fuera de él se pide confirmación (P-10). Bordes incluidos. */
+export const UF_RANGO_MIN = 30_000
+export const UF_RANGO_MAX = 60_000
+
+/**
+ * Parseo es-CL de una UF escrita a mano: «41.173,33», «$41.173,33», «41173,33».
+ * Devuelve null si no es un número > 0.
+ */
+export function parsearUF(texto: string): number | null {
+  const limpio = texto.trim().replace(/^\$\s*/, '').replace(/\./g, '').replace(',', '.')
+  const num = parseFloat(limpio)
+  return !isNaN(num) && num > 0 ? num : null
+}
+
+export function ufFueraDeRango(num: number): boolean {
+  return num < UF_RANGO_MIN || num > UF_RANGO_MAX
+}
