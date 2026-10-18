@@ -8,6 +8,7 @@ import type {
   ResultadosArriendo,
 } from '@/types'
 import { precioCompraTotalUf } from './precioCompra'
+import { cotizacionEfectiva, esCompraContado } from './compraContado'
 
 // ─────────────────────────────────────────────────────────────────
 // MOTOR DE CÁLCULO — fórmulas exactas de la planilla Excel
@@ -49,6 +50,9 @@ export function calcularResultadosCotizacion(
   cot: Cotizacion,
   uf_valor_clp: number
 ): ResultadosCotizacion {
+  // B-04: en compra contado se calcula con BI 0, pie 100 % y crédito 0 % (sin tocar el store).
+  cot = cotizacionEfectiva(cot)
+  const contado = esCompraContado(cot)
   const { propiedad, pie, hipotecario, rentabilidad } = cot
   const precio_neto_uf = propiedad.precio_neto_uf
   const bono_descuento_pct = propiedad.bono_descuento_pct
@@ -78,12 +82,18 @@ export function calcularResultadosCotizacion(
     console.warn('Revisar porcentajes ya que son diferentes a 100%')
   }
 
-  // Simulador hipotecario sobre valor de escrituración.
-  const hipResult = calcularHipotecario(
-    valor_escritura_uf,
-    hipotecario,
-    uf_valor_clp
-  )
+  // Simulador hipotecario sobre valor de escrituración. En contado no hay crédito: tampoco
+  // aplica el mínimo de seguros que `calcularHipotecario` cobra con monto 0 (B-04).
+  const hipResult: ResultadosHipotecario = contado
+    ? {
+        monto_credito_uf: 0,
+        monto_credito_clp: 0,
+        dividendo_capital_uf: 0,
+        dividendo_total_uf: 0,
+        dividendo_total_clp: 0,
+        tabla_amortizacion: [],
+      }
+    : calcularHipotecario(valor_escritura_uf, hipotecario, uf_valor_clp)
 
   // 5. Plusvalía / venta
   const plusvalia = calcularPlusvalia(

@@ -3,6 +3,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion } from '@/lib/engines/calculosDiversificacion'
 import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
+import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import {
   seriePatrimonioTotalUf,
   liquidezVentaUnidadClp,
@@ -52,7 +53,8 @@ export default function ModuloResumen() {
   }
 
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
-  const hayBonoPie = activas.some((c) => tieneBonoPie(c.pie))
+  // B-04: en compra contado el pie efectivo no tiene bono pie.
+  const hayBonoPie = activas.some((c) => tieneBonoPie(cotizacionEfectiva(c).pie))
 
   const tablaDiv = useMemo(
     () => calcularDiversificacion(diversificacion, cotizaciones, uf),
@@ -151,8 +153,11 @@ export default function ModuloResumen() {
             <tbody>
               {activas.map((c, i) => {
                 const r = resultados[i]
-                const bonoPie = bonoPieUf(r.valor_escritura_uf, c.pie)
-                const piePagar = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, c.pie)
+                // B-04: pie efectivo (en compra contado, 100 % upfront y sin bono pie).
+                const contado = esCompraContado(c)
+                const pieEf = cotizacionEfectiva(c).pie
+                const bonoPie = bonoPieUf(r.valor_escritura_uf, pieEf)
+                const piePagar = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pieEf)
                 return (
                   <tr key={c.id}>
                     <td>
@@ -197,16 +202,16 @@ export default function ModuloResumen() {
                     </td>
                     <td className="td-num">
                       <div className="cell-stack">
-                        <span className="badge badge-gold">{(c.pie.pie_pct * 100).toFixed(0)}%</span>
+                        <span className="badge badge-gold">{(pieEf.pie_pct * 100).toFixed(0)}%</span>
                         <span className="cell-stack__ufline" style={{ color: 'var(--color-gold)' }}>{fmtUF(r.pie_total_uf)}</span>
                       </div>
                     </td>
                     {hayBonoPie && (
                       <td className="td-num">
                         <div className="cell-stack">
-                          {tieneBonoPie(c.pie) ? (
+                          {tieneBonoPie(pieEf) ? (
                             <>
-                              <span className="cell-stack__line1">{(bonoPiePct(c.pie) * 100).toFixed(2)}%</span>
+                              <span className="cell-stack__line1">{(bonoPiePct(pieEf) * 100).toFixed(2)}%</span>
                               <span className="cell-stack__line2">{fmtUF(bonoPie)}</span>
                               <span className="cell-stack__line2">{fmtCLP(bonoPie * uf)}</span>
                             </>
@@ -224,10 +229,16 @@ export default function ModuloResumen() {
                     </td>
                     <td className="td-num">
                       <div className="cell-stack">
-                        <span className="cell-stack__line1" style={{ color: 'var(--color-gold)' }}>
-                          {fmtUF(r.hipotecario.dividendo_total_uf)}
-                        </span>
-                        <span className="cell-stack__line2">{fmtCLP(r.hipotecario.dividendo_total_clp)}</span>
+                        {contado ? (
+                          <span className="cell-stack__line1" style={{ color: 'var(--color-gold)' }}>Contado</span>
+                        ) : (
+                          <>
+                            <span className="cell-stack__line1" style={{ color: 'var(--color-gold)' }}>
+                              {fmtUF(r.hipotecario.dividendo_total_uf)}
+                            </span>
+                            <span className="cell-stack__line2">{fmtCLP(r.hipotecario.dividendo_total_clp)}</span>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="td-num">

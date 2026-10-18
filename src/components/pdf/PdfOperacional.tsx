@@ -19,6 +19,7 @@ import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
 import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
+import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
 import { letraCotizacion } from '@/lib/cotizaciones'
@@ -86,9 +87,12 @@ interface SheetProps {
 function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, letraCotizacion }: SheetProps) {
   const uf = global.uf_valor_clp
   const r: ResultadosCotizacion = calcularResultadosCotizacion(cot, uf)
-  const propiedad = cot.propiedad
-  const pie = cot.pie
-  const hip = cot.hipotecario
+  // B-04: se muestra la cotización efectiva (en contado: sin BI, pie 100 % upfront, crédito 0 %).
+  const contado = esCompraContado(cot)
+  const ce = cotizacionEfectiva(cot)
+  const propiedad = ce.propiedad
+  const pie = ce.pie
+  const hip = ce.hipotecario
 
   // Cálculos derivados — algunos no tienen helper directo en motor
   const pcDeptoUf = precioCompraDeptoUf(propiedad)
@@ -192,7 +196,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
 
       {/* Badge de uso interno */}
       <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
-        COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC
+        COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC{contado ? ' · COMPRA CONTADO' : ''}
       </div>
 
       {/* A. Antecedentes de la propiedad */}
@@ -206,7 +210,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
 
       {/* B. Detalle precios y descuentos — flujo izq→der: Lista → (−Descuentos) → SUBTOTAL → (+Bonif al pie) → VALOR FINAL */}
       <SubTitle>B · Detalle precios y descuentos</SubTitle>
-      <Grid cols={6}>
+      <Grid cols={contado ? 5 : 6}>
         <StatBox label="Precio lista" value={fmtUF(propiedad.precio_lista_uf)} sub={fmtCLP(propiedad.precio_lista_uf * uf)} />
         <StatBox label={`Descuento (${pctDescuento.toFixed(2)}%)`} value={fmtUF(descuentoTotalUf)} sub={fmtCLP(descuentoTotalUf * uf)} />
         <StatBox label={`Desc. por Bono (${(bonoMaxPct * 100).toFixed(2)}%)`} value={fmtUF(descuentoBonoUf)} sub={fmtCLP(descuentoBonoUf * uf)} />
@@ -218,11 +222,13 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
             `Depto ${fmtUF(pcDeptoUf)}${tieneEst ? ` · Est ${fmtUF(propiedad.estacionamiento_uf)}` : ''}${tieneBod ? ` · Bod ${fmtUF(propiedad.bodega_uf)}` : ''}`,
           ].join(' · ')}
         />
-        <StatBox
-          label={`Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`}
-          value={fmtUF(bonificacionInmobiliariaUf)}
-          sub={fmtCLP(bonificacionInmobiliariaUf * uf)}
-        />
+        {!contado && (
+          <StatBox
+            label={`Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`}
+            value={fmtUF(bonificacionInmobiliariaUf)}
+            sub={fmtCLP(bonificacionInmobiliariaUf * uf)}
+          />
+        )}
         <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
 
@@ -230,9 +236,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
       <SubTitle>C.1 · Pie y forma de pago</SubTitle>
       <Grid cols={tieneBonoPie(pie) ? 2 : 1}>
         <StatBox
-          label={`Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          label={contado ? 'Pago contado (100 %) · pago único' : `Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
+          valueColor={contado ? T.accent : undefined}
         />
         {tieneBonoPie(pie) && (
           <StatBox
@@ -243,7 +250,8 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         )}
       </Grid>
 
-      {/* C.2 Pie a pagar + desglose horizontal de cuotas */}
+      {/* C.2 Pie a pagar + desglose horizontal de cuotas (no aplica en compra contado) */}
+      {!contado && (<>
       <SubTitle>C.2 · Desglose de pago pie restante</SubTitle>
       <Grid cols={1}>
         <StatBox
@@ -278,6 +286,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           }
         />
       </Grid>
+      </>)}
 
       {/* D. Resumen financiero — UF en bold, $ en gris */}
       <SubTitle>D · Resumen financiero</SubTitle>
@@ -289,16 +298,20 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           valueColor={T.accent}
         />
         <StatBox
-          label={`PIE A DOCUMENTAR (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          label={contado ? 'PAGO CONTADO (100%)' : `PIE A DOCUMENTAR (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
         />
-        <StatBox
-          label={`MONTO DE CRÉDITO (${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}%)`}
-          value={fmtUF(r.hipotecario.monto_credito_uf)}
-          sub={fmtCLP(r.hipotecario.monto_credito_clp)}
-          valueColor={T.accent}
-        />
+        {contado ? (
+          <StatBox label="COMPRA CONTADO" value="Sin crédito" sub="Sin crédito hipotecario ni dividendo" valueColor={T.accent} />
+        ) : (
+          <StatBox
+            label={`MONTO DE CRÉDITO (${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}%)`}
+            value={fmtUF(r.hipotecario.monto_credito_uf)}
+            sub={fmtCLP(r.hipotecario.monto_credito_clp)}
+            valueColor={T.accent}
+          />
+        )}
         <StatBox
           label={diversificacion.diversif_iva_manual_override ? 'DEVOLUCIÓN DE IVA (MANUAL)' : 'DEVOLUCIÓN DE IVA'}
           value={ivaClp == null ? 'No aplica' : uf > 0 ? fmtUF(ivaClp / uf) : '—'}

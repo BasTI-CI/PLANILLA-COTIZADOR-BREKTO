@@ -29,6 +29,7 @@ const cotizacionVacia = (id: number): Cotizacion => ({
   activa: false,
   modo_fuente: 'manual',
   califica_iva: false,
+  compra_contado: false,
   mes_entrega_flujo: null,
   propiedad: {
     proyecto_nombre: '',
@@ -72,6 +73,8 @@ interface AppActions {
   setCotizacionActiva: (idx: number) => void
   setModoFuente: (idx: number, modo: 'supabase' | 'manual') => void
   setCalificaIva: (idx: number, califica: boolean) => void
+  /** B-04: solo cambia el flag; pie, hipotecario y propiedad se conservan (ver cotizacionEfectiva). */
+  setCompraContado: (idx: number, valor: boolean) => void
   setMesEntregaFlujo: (idx: number, mes: number | null) => void
 
   // Setters por sección de cotización
@@ -165,6 +168,9 @@ export const useAppStore = create<AppState & AppActions>()(
               )
         }
       }),
+
+    setCompraContado: (idx, valor) =>
+      set((state) => { state.cotizaciones[idx].compra_contado = valor }),
 
     // ── Setters por sección ─────────────────
     setRentabilidad: (idx, data) =>

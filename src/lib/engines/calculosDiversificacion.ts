@@ -7,6 +7,7 @@ import type {
 import { calcularResultadosCotizacion } from './calculosCotizacion'
 import { calcularMontosDesglosePieClp } from './calculosPie'
 import { devolucionIvaPrecioDeptoClp } from './precioCompra'
+import { cotizacionEfectiva } from './compraContado'
 
 // ─────────────────────────────────────────────────────────────────
 // CALCULO DE IVA AUTOMÁTICO
@@ -42,8 +43,9 @@ function egresoPieUnidadMes(
 ): number {
   if (!c.activa) return 0
   const r = calcularResultadosCotizacion(c, uf_valor_clp)
-  const mp = calcularMontosDesglosePieClp(r.valor_escritura_uf, c.pie, uf_valor_clp)
-  const pie = c.pie
+  // B-04: en compra contado todo el pie va al upfront del mes 1, sin cuotas ni cuotón.
+  const pie = cotizacionEfectiva(c).pie
+  const mp = calcularMontosDesglosePieClp(r.valor_escritura_uf, pie, uf_valor_clp)
   let out = 0
   if (mes === 1) out += mp.monto_upfront_clp
 
