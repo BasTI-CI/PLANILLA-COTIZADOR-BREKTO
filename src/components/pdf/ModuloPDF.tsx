@@ -70,8 +70,11 @@ const SECCIONES = [
   })),
 ]
 
-/** Cotizaciones por hoja en la comparativa y en los KPIs (Hojas 2 y 3). */
-const COMPARATIVA_POR_HOJA = 5
+/** Cotizaciones por hoja en la tabla comparativa (Hoja 2). */
+const COMPARATIVA_POR_HOJA = 10
+
+/** Tarjetas por hoja en los KPIs de la inversión (Hoja 3). */
+const KPIS_POR_HOJA = 5
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -679,10 +682,13 @@ export default function ModuloPDF() {
   const enPropuesta = activas
     .map((c, i) => ({ c, r: resultados[i] }))
     .filter(({ c }) => secciones.has(`cot${letraCotizacion(c.id)}`))
-  const bloquesPropuesta: (typeof enPropuesta)[] = []
-  for (let i = 0; i < enPropuesta.length; i += COMPARATIVA_POR_HOJA) {
-    bloquesPropuesta.push(enPropuesta.slice(i, i + COMPARATIVA_POR_HOJA))
+  const partir = (porHoja: number) => {
+    const bloques: (typeof enPropuesta)[] = []
+    for (let i = 0; i < enPropuesta.length; i += porHoja) bloques.push(enPropuesta.slice(i, i + porHoja))
+    return bloques
   }
+  const bloquesComparativa = partir(COMPARATIVA_POR_HOJA)
+  const bloquesKpis = partir(KPIS_POR_HOJA)
   const dataFinFinal = dataCajaDiv.map((row, idx) =>
     idx === dataCajaDiv.length - 1 ? { ...row, caja: row.caja + extraVentaM60 } : row
   )
@@ -987,15 +993,15 @@ export default function ModuloPDF() {
         )}
 
         {/* HOJA 2 — Comparativa de cotizaciones: solo la tabla (landscape) */}
-        {secciones.has('resumen') && enPropuesta.length > 0 && bloquesPropuesta.map((bloque, b) => (
+        {secciones.has('resumen') && enPropuesta.length > 0 && bloquesComparativa.map((bloque, b) => (
           <PdfPage
             key={`comparativa-${b}`}
             orientation="landscape"
-            label={bloquesPropuesta.length > 1 ? `Comparativa ${b + 1}/${bloquesPropuesta.length}` : 'Comparativa'}
+            label={bloquesComparativa.length > 1 ? `Comparativa ${b + 1}/${bloquesComparativa.length}` : 'Comparativa'}
             innerPadding="10mm"
           >
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              📊 Comparativa de Cotizaciones{bloquesPropuesta.length > 1 ? ` (${b + 1} de ${bloquesPropuesta.length})` : ''}
+              📊 Comparativa de Cotizaciones{bloquesComparativa.length > 1 ? ` (${b + 1} de ${bloquesComparativa.length})` : ''}
             </h2>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 14 }}>
               <thead>
@@ -1070,17 +1076,17 @@ export default function ModuloPDF() {
         ))}
 
         {/* HOJA 3 — KPIs de la inversión (landscape) */}
-        {secciones.has('kpis') && enPropuesta.length > 0 && bloquesPropuesta.map((bloque, b) => (
+        {secciones.has('kpis') && enPropuesta.length > 0 && bloquesKpis.map((bloque, b) => (
           <PdfPage
             key={`kpis-${b}`}
             orientation="landscape"
-            label={bloquesPropuesta.length > 1 ? `KPIs ${b + 1}/${bloquesPropuesta.length}` : 'KPIs'}
+            label={bloquesKpis.length > 1 ? `KPIs ${b + 1}/${bloquesKpis.length}` : 'KPIs'}
             innerPadding="10mm"
           >
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              🎯 KPIs de la inversión{bloquesPropuesta.length > 1 ? ` (${b + 1} de ${bloquesPropuesta.length})` : ''}
+              🎯 KPIs de la inversión{bloquesKpis.length > 1 ? ` (${b + 1} de ${bloquesKpis.length})` : ''}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, COMPARATIVA_POR_HOJA)}, 1fr)`, gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, KPIS_POR_HOJA)}, 1fr)`, gap: 10 }}>
               {bloque.map(({ c, r }) => {
                 return (
                   <div key={c.id} style={{ padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
@@ -1205,7 +1211,7 @@ export default function ModuloPDF() {
           </PdfPage>
         )}
 
-        {/* HOJAS 4+ — por cada cotización activa: 2 hojas portrait (Resumen general + A–C en la primera; D–F + Política en la segunda) */}
+        {/* HOJAS 5+ — por cada cotización activa: 2 hojas portrait (Resumen general + A–C en la primera; D–F + Política en la segunda) */}
         {activas.map((c) => {
           const letra = letraCotizacion(c.id)
           if (!secciones.has(`cot${letra}`)) return null
