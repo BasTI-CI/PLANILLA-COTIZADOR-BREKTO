@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cargarUF, debeAvisarUFRespaldo, type ResultadoUF } from './uf'
+import {
+  cargarUF,
+  debeAvisarUFRespaldo,
+  parsearUF,
+  ufFueraDeRango,
+  type ResultadoUF,
+} from './uf'
 
 const FECHA = '2026-10-17T03:00:00.000Z'
 
@@ -109,5 +115,33 @@ describe('debeAvisarUFRespaldo', () => {
   })
   it('todavía cargando → no avisa', () => {
     expect(debeAvisarUFRespaldo(true, false, true)).toBe(false)
+  })
+})
+
+describe('parsearUF', () => {
+  it.each([
+    ['41.173,33', 41173.33],
+    ['$41.173,33', 41173.33],
+    ['$ 41.173,33 ', 41173.33],
+    ['41173,33', 41173.33],
+  ])('«%s» → %d', (texto, esperado) => {
+    expect(parsearUF(texto)).toBe(esperado)
+  })
+
+  it.each(['abc', '', '0', '-5'])('«%s» → null', (texto) => {
+    expect(parsearUF(texto)).toBeNull()
+  })
+})
+
+describe('ufFueraDeRango', () => {
+  it.each([
+    [29_999.99, true],
+    [30_000, false],
+    [41_173.33, false],
+    [60_000, false],
+    [60_000.01, true],
+    [4, true],
+  ])('%d → %s', (num, esperado) => {
+    expect(ufFueraDeRango(num)).toBe(esperado)
   })
 })
