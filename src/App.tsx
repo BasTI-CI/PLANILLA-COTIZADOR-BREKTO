@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useUF } from '@/hooks/useSupabase'
 import { debeAvisarUFRespaldo } from '@/lib/uf'
@@ -40,11 +40,14 @@ export default function App() {
   const [ufInput, setUfInput] = useState<string>('')
   const [editingUF, setEditingUF] = useState(false)
   const [ufEditadaAMano, setUfEditadaAMano] = useState(false)
+  /** Espejo de ufEditadaAMano para el efecto de mindicador, sin volver a dispararlo (P-09). */
+  const ufEditadaAManoRef = useRef(false)
   /** Borrador del input de la barra de aviso: se aplica al confirmar, no por tecla. */
   const [ufAvisoInput, setUfAvisoInput] = useState<string>('')
 
   useEffect(() => {
-    if (uf && !ufLoading) {
+    // Una UF ingresada a mano no la pisa la respuesta tardía de mindicador (P-09)
+    if (uf && !ufLoading && !ufEditadaAManoRef.current) {
       setUfValor(uf)
       setUfInput(uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     }
@@ -55,6 +58,7 @@ export default function App() {
     const num = parseFloat(val.replace(/\./g, '').replace(',', '.'))
     if (!isNaN(num) && num > 0) {
       setUfValor(num)
+      ufEditadaAManoRef.current = true
       setUfEditadaAMano(true)
     }
   }
