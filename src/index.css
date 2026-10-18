@@ -834,3 +834,9 @@ input.form-input.input-no-spinner[type='number'],
 [data-pdf-page="true"] td,
 [data-pdf-page="true"] td:first-child { color: inherit; font-weight: inherit; border-bottom: none; }
 [data-pdf-page="true"] tr:hover td { background: transparent; }
+
+/* B-04: foco visible del switch compra contado (solo teclado) */
+.switch-compra-contado:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
