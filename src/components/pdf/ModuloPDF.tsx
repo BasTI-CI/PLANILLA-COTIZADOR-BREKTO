@@ -596,7 +596,7 @@ function renderBloqueFG(
         {r.arriendo.tiene_ag && (
           <>
             <Row separador cells={[`Arriendo garantizado (${r.arriendo.ag_meses} meses)`, '—', fmtCLP(r.arriendo.arriendo_garantizado_clp)]} />
-            <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.diferencia_div_ag_clp)]} />
+            <Row destacada cells={['Diferencia AG − dividendo', '—', fmtCLP(r.arriendo.diferencia_div_ag_clp)]} />
           </>
         )}
         <Row separador cells={[
@@ -608,7 +608,11 @@ function renderBloqueFG(
           '—',
           fmtCLP(r.arriendo.ingreso_neto_flujo_clp),
         ]} />
-        <Row destacada cells={['Diferencia arriendo − dividendo', '—', fmtCLP(r.arriendo.resultado_mensual_clp)]} />
+        <Row destacada cells={[
+          renta === 'corta' ? 'Diferencia renta corta − dividendo' : 'Diferencia mercado − dividendo',
+          '—',
+          fmtCLP(r.arriendo.resultado_mensual_clp),
+        ]} />
       </TablaCot>
 
       <SubTitle>F · Promociones de la Cotización</SubTitle>
