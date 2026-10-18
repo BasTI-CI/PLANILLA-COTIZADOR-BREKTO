@@ -2,6 +2,7 @@ import type {
   DatosDiversificacion,
   Cotizacion,
   FilaDiversificacion,
+  ResultadosCotizacion,
 } from '@/types'
 import { calcularResultadosCotizacion } from './calculosCotizacion'
 import { calcularMontosDesglosePieClp } from './calculosPie'
@@ -77,7 +78,22 @@ function sumaEgresoPieMes(
   )
 }
 
-/** Suma (dividendo − arriendo) solo para unidades con mes > mes_entrega_flujo (desde entrega+1). */
+/**
+ * Ingreso de arriendo de la unidad en el mes j post-entrega (j = mes − mes_entrega_flujo), §3.5.1.
+ * j en 1…ag_meses → arriendo garantizado; j > ag_meses → arriendo de mercado (o neto renta corta).
+ * La regla de cuándo hay AG (solo renta larga, booleano encendido, ag_meses > 0) ya viene en
+ * r.arriendo.tiene_ag (calcularArriendo). Lo que pase del mes 60 simplemente no se consulta.
+ */
+export function arriendoFlujoUnidadMes(r: ResultadosCotizacion, j: number): number {
+  if (j < 1) return 0
+  if (r.arriendo.tiene_ag && j <= r.arriendo.ag_meses) return r.arriendo.arriendo_garantizado_clp
+  return r.arriendo.ingreso_neto_flujo_clp
+}
+
+/**
+ * Suma (dividendo − arriendo) solo para unidades con mes > mes_entrega_flujo (desde entrega+1).
+ * El arriendo es el AG en los primeros ag_meses post-entrega y el de mercado después (B-07).
+ */
 function sumaDividendoMenosArriendoPostEntrega(
   cotizacionesActivas: Cotizacion[],
   mes: number,
@@ -86,8 +102,49 @@ function sumaDividendoMenosArriendoPostEntrega(
   return cotizacionesActivas.reduce((sum, c) => {
     if (c.mes_entrega_flujo == null || mes <= c.mes_entrega_flujo) return sum
     const r = calcularResultadosCotizacion(c, uf_valor_clp)
-    return sum + (r.hipotecario.dividendo_total_clp - r.arriendo.ingreso_neto_flujo_clp)
+    const arriendo = arriendoFlujoUnidadMes(r, mes - c.mes_entrega_flujo)
+    return sum + (r.hipotecario.dividendo_total_clp - arriendo)
   }, 0)
+}
+
+/**
+ * Devolución de IVA que le toca a una cotización (CLP), la misma que el flujo 60m
+ * inyecta en su mes IVA (mes_entrega_flujo + 5). `null` si no está activa o no califica.
+ * - Automático: 15% × precio compra depto (ivaUnidadClp).
+ * - Manual: el total manual prorrateado según el IVA automático de cada activa que califica.
+ *   Si esa base es 0, el total completo va a la unidad del primer mes IVA en 1..60
+ *   (en empate, la primera en el orden de `cotizaciones`); 0 para el resto.
+ * Se devuelve aunque la unidad no tenga mes de entrega o su mes IVA pase de 60.
+ */
+export function devolucionIvaCotizacionClp(
+  c: Cotizacion,
+  cotizaciones: Cotizacion[],
+  datos: DatosDiversificacion,
+  uf_valor_clp: number
+): number | null {
+  if (!c.activa || !c.califica_iva) return null
+  if (!datos.diversif_iva_manual_override) return ivaUnidadClp(c, uf_valor_clp)
+
+  const manualTotal = datos.diversif_iva_total_clp
+  const activas = cotizaciones.filter((x) => x.activa)
+  const totalShares = activas.reduce((s, x) => s + ivaUnidadClp(x, uf_valor_clp), 0)
+
+  if (totalShares <= 0) {
+    let duena: Cotizacion | null = null
+    let primerMes = Infinity
+    for (const x of activas) {
+      if (!x.califica_iva || x.mes_entrega_flujo == null) continue
+      const m = x.mes_entrega_flujo + 5
+      if (m >= 1 && m <= 60 && m < primerMes) {
+        primerMes = m
+        duena = x
+      }
+    }
+    return duena?.id === c.id ? Math.round(manualTotal) : 0
+  }
+
+  const share = ivaUnidadClp(c, uf_valor_clp) / totalShares
+  return Math.round(manualTotal * share)
 }
 
 function ivaInyectadoEnMes(
@@ -96,40 +153,11 @@ function ivaInyectadoEnMes(
   activas: Cotizacion[],
   uf_valor_clp: number
 ): number {
-  const manual = datos.diversif_iva_manual_override
-  const manualTotal = datos.diversif_iva_total_clp
-
-  const totalShares = activas.reduce((s, c) => s + ivaUnidadClp(c, uf_valor_clp), 0)
-
-  if (!manual) {
-    return activas.reduce((s, c) => {
-      if (!c.califica_iva || c.mes_entrega_flujo == null) return s
-      const mIva = c.mes_entrega_flujo + 5
-      if (mes !== mIva || mIva > 60) return s
-      return s + ivaUnidadClp(c, uf_valor_clp)
-    }, 0)
-  }
-
-  const califican = activas.filter((c) => c.califica_iva)
-  if (califican.length === 0) return 0
-
-  if (totalShares <= 0) {
-    const mesesIva = califican
-      .filter((c) => c.mes_entrega_flujo != null)
-      .map((c) => (c.mes_entrega_flujo as number) + 5)
-      .filter((m) => m >= 1 && m <= 60)
-      .sort((a, b) => a - b)
-    const primero = mesesIva[0]
-    if (mes === primero) return Math.round(manualTotal)
-    return 0
-  }
-
-  return califican.reduce((s, c) => {
-    if (c.mes_entrega_flujo == null) return s
+  return activas.reduce((s, c) => {
+    if (!c.califica_iva || c.mes_entrega_flujo == null) return s
     const mIva = c.mes_entrega_flujo + 5
     if (mes !== mIva || mIva > 60) return s
-    const share = ivaUnidadClp(c, uf_valor_clp) / totalShares
-    return s + Math.round(manualTotal * share)
+    return s + (devolucionIvaCotizacionClp(c, activas, datos, uf_valor_clp) ?? 0)
   }, 0)
 }
 
@@ -139,7 +167,8 @@ function ivaInyectadoEnMes(
 // Movimientos del mes:
 // - Pie: upfront mes 1; cuotas antes en 1…nAntes; cuotas después en (nAntes+1)…(nAntes+nDespues);
 //   cuotón en 1…nCuoton (según cotizador). Siempre ≥ 0 (egreso).
-// - Dividendo − arriendo: desde mes_entrega_flujo + 1 por cada cotización.
+// - Dividendo − arriendo: desde mes_entrega_flujo + 1 por cada cotización. Arriendo = AG en los
+//   primeros ag_meses post-entrega (solo renta larga) y de mercado después (§3.5.1).
 //   Con signo: positivo = dividendo domina (egreso); negativo = arriendo domina (ingreso a caja).
 // - IVA: mes_entrega_flujo + 5 por unidad que califica (manual repartido o lump en primer mes si sin base).
 //

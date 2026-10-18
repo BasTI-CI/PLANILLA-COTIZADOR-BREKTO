@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion } from '@/lib/engines/calculosDiversificacion'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import {
   seriePatrimonioTotalUf,
@@ -17,6 +17,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 const CHART_TOOLTIP_STYLE = {
   backgroundColor: '#1a2238',
@@ -52,6 +53,8 @@ export default function ModuloResumen() {
   }
 
   const resultados = activas.map((c) => calcularResultadosCotizacion(c, uf))
+  // B-04: en compra contado el pie efectivo no tiene bono pie.
+  const hayBonoPie = activas.some((c) => tieneBonoPie(cotizacionEfectiva(c).pie))
 
   const tablaDiv = useMemo(
     () => calcularDiversificacion(diversificacion, cotizaciones, uf),
@@ -139,7 +142,7 @@ export default function ModuloResumen() {
                 <th>Valor tasación depto</th>
                 <th>Valor escrituración</th>
                 <th>Pie doc.</th>
-                <th>Bono pie</th>
+                {hayBonoPie && <th>Bono pie</th>}
                 <th>Pie a pagar</th>
                 <th>Dividendo</th>
                 <th>Plusvalía</th>
@@ -159,7 +162,7 @@ export default function ModuloResumen() {
                   <tr key={c.id}>
                     <td>
                       <div className="cell-stack">
-                        <span className="badge badge-blue">{String.fromCharCode(65 + c.id)}</span>
+                        <span className="badge badge-blue">{letraCotizacion(c.id)}</span>
                       </div>
                     </td>
                     <td>
@@ -203,18 +206,21 @@ export default function ModuloResumen() {
                         <span className="cell-stack__ufline" style={{ color: 'var(--color-gold)' }}>{fmtUF(r.pie_total_uf)}</span>
                       </div>
                     </td>
-                    <td className="td-num">
-                      <div className="cell-stack">
-                        {contado ? (
-                          <span className="cell-stack__line1">—</span>
-                        ) : (
-                          <>
-                            <span className="cell-stack__line1">{fmtUF(bonoPie)}</span>
-                            <span className="cell-stack__line2">{fmtCLP(bonoPie * uf)}</span>
-                          </>
-                        )}
-                      </div>
-                    </td>
+                    {hayBonoPie && (
+                      <td className="td-num">
+                        <div className="cell-stack">
+                          {tieneBonoPie(pieEf) ? (
+                            <>
+                              <span className="cell-stack__line1">{(bonoPiePct(pieEf) * 100).toFixed(2)}%</span>
+                              <span className="cell-stack__line2">{fmtUF(bonoPie)}</span>
+                              <span className="cell-stack__line2">{fmtCLP(bonoPie * uf)}</span>
+                            </>
+                          ) : (
+                            <span className="cell-stack__line1">—</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="td-num">
                       <div className="cell-stack">
                         <span className="cell-stack__line1" style={{ color: 'var(--color-gold)' }}>{fmtUF(piePagar)}</span>
@@ -505,7 +511,7 @@ export default function ModuloResumen() {
                 }
               />
               <span>
-                Unidad {idx + 1} — Cot. {String.fromCharCode(65 + c.id)} ·{' '}
+                Unidad {idx + 1} — Cot. {letraCotizacion(c.id)} ·{' '}
                 {c.propiedad.proyecto_nombre.split(' ')[0]} U{c.propiedad.unidad_numero}
                 <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 6 }}>
                   (+{fmtCLP(liquidezPorUnidad[idx])} si se vende)
@@ -599,7 +605,7 @@ export default function ModuloResumen() {
             return (
               <div key={c.id} className="card card-sm" style={{ background: 'var(--color-bg-secondary)' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-gold)', marginBottom: 8 }}>
-                  Cotización {String.fromCharCode(65 + c.id)} — {c.propiedad.proyecto_nombre}
+                  Cotización {letraCotizacion(c.id)} — {c.propiedad.proyecto_nombre}
                 </div>
                 <div className="stat-item" style={{ marginBottom: 6 }}>
                   <span className="stat-label">Plusvalía proyectada 5 años</span>

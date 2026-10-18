@@ -17,10 +17,13 @@ import html2canvas from 'html2canvas'
 import type { Cotizacion, DatosGlobales, ResultadosCotizacion } from '@/types'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
+import { letraCotizacion } from '@/lib/cotizaciones'
+import { useAppStore } from '@/store/useAppStore'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -102,9 +105,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const beneficioUf = r.beneficio_inmobiliario_uf  // BI sobre tasación (depto)
   // SUBTOTAL = depto post-descuentos + adicionales (sin BI). Igual a precio_compra_total_uf por construcción.
   const subtotalUf = r.precio_compra_total_uf
-  // BONIFICACIÓN AL PIE (B) = delta entre subtotal y valor escrituración. Por construcción del motor:
+  // BONIFICACIÓN INMOBILIARIA (BI) = delta entre subtotal y valor escrituración. Por construcción del motor:
   // valor_escritura - precio_compra_total = beneficio inmobiliario sobre la base (con/sin BI repercutido en adicionales).
-  const bonificacionAlPieUf = r.valor_escritura_uf - r.precio_compra_total_uf
+  // No confundir con el bono pie (sección C.1).
+  const bonificacionInmobiliariaUf = r.valor_escritura_uf - r.precio_compra_total_uf
   const valorFinalUf = r.valor_escritura_uf
 
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
@@ -114,6 +118,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const tieneBod = propiedad.bodega_uf > 0
   const promociones = leyendaPromociones(cot)
   const cuotonTotalClp = desg.monto_cuoton_clp * Math.max(pie.cuoton_n_cuotas, 1) // monto total tramo cuotón
+  // Devolución de IVA de esta unidad, la misma del flujo 60m. Se lee del store (no de los args del
+  // exporter) para no tocar su firma; el prorrateo manual necesita todas las cotizaciones.
+  const { cotizaciones, diversificacion } = useAppStore.getState()
+  const ivaClp = devolucionIvaCotizacionClp(cot, cotizaciones, diversificacion, uf)
 
   const headerColStyle: React.CSSProperties = {
     fontSize: 10,
@@ -132,6 +140,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   return (
     <div
       data-pdf-page="true"
+      data-pdf-label={`Operacional Cotización ${letraCotizacion}`}
       style={{
         width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
         height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
@@ -214,20 +223,31 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           ].join(' · ')}
         />
         {!contado && (
-          <StatBox label="Bonificación al pie" value={fmtUF(bonificacionAlPieUf)} sub={fmtCLP(bonificacionAlPieUf * uf)} />
+          <StatBox
+            label={`Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`}
+            value={fmtUF(bonificacionInmobiliariaUf)}
+            sub={fmtCLP(bonificacionInmobiliariaUf * uf)}
+          />
         )}
         <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
 
       {/* C.1 Pie a documentar (referencia, antes del desglose) */}
       <SubTitle>C.1 · Pie y forma de pago</SubTitle>
-      <Grid cols={1}>
+      <Grid cols={tieneBonoPie(pie) ? 2 : 1}>
         <StatBox
           label={contado ? 'Pago contado (100 %) · pago único' : `Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
           valueColor={contado ? T.accent : undefined}
         />
+        {tieneBonoPie(pie) && (
+          <StatBox
+            label={`Bono pie (${(bonoPiePct(pie) * 100).toFixed(2)}% s/ escrituración)`}
+            value={fmtUF(bonoPie)}
+            sub={fmtCLP(bonoPie * uf)}
+          />
+        )}
       </Grid>
 
       {/* C.2 Pie a pagar + desglose horizontal de cuotas (no aplica en compra contado) */}
@@ -270,7 +290,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
 
       {/* D. Resumen financiero — UF en bold, $ en gris */}
       <SubTitle>D · Resumen financiero</SubTitle>
-      <Grid cols={3}>
+      <Grid cols={4}>
         <StatBox
           label="VALOR ESCRITURACIÓN (100%)"
           value={fmtUF(r.valor_escritura_uf)}
@@ -292,6 +312,11 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
             valueColor={T.accent}
           />
         )}
+        <StatBox
+          label={diversificacion.diversif_iva_manual_override ? 'DEVOLUCIÓN DE IVA (MANUAL)' : 'DEVOLUCIÓN DE IVA'}
+          value={ivaClp == null ? 'No aplica' : uf > 0 ? fmtUF(ivaClp / uf) : '—'}
+          sub={ivaClp == null ? undefined : fmtCLP(ivaClp)}
+        />
       </Grid>
 
       {/* E. Promociones */}
@@ -353,7 +378,7 @@ interface ExportarArgs {
  * Renderiza off-screen vía createRoot, captura con html2canvas, comprime y descarga.
  */
 export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, proyectoNombre }: ExportarArgs): Promise<void> {
-  const letra = String.fromCharCode(65 + cot.id)
+  const letra = letraCotizacion(cot.id)
 
   // Container off-screen
   const container = document.createElement('div')
@@ -382,12 +407,19 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
     const node = container.querySelector<HTMLElement>('[data-pdf-page="true"]')
     if (!node) throw new Error('No se encontró el nodo de la hoja operacional')
 
+    // Guardia anti-corte: la hoja tiene overflow hidden; lo que no cabe no sale en el PDF.
+    if (node.scrollHeight > node.clientHeight + 1) {
+      window.alert(`La hoja "${node.dataset.pdfLabel ?? 'operacional'}" no cabe completa: puede faltar información.`)
+    }
+
     // Captura
     const canvas = await html2canvas(node, {
       scale: 1.5,
       backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
+      scrollX: 0,
+      scrollY: 0,
       windowWidth: node.scrollWidth,
       windowHeight: node.scrollHeight,
     })

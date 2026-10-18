@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { esCompraContado } from '@/lib/engines/compraContado'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 const formatUF = (v: number) => `${v.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
 const formatCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -107,7 +108,7 @@ export default function SimuladorHipotecario({ cotizacionId }: Props) {
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-        <span className="badge badge-blue">Cotización {String.fromCharCode(65 + cotizacionId)}</span>
+        <span className="badge badge-blue">Cotización {letraCotizacion(cotizacionId)}</span>
         <span className="badge badge-gold">{p.proyecto_nombre}</span>
         <span className="badge badge-muted">Unidad {p.unidad_numero}</span>
       </div>

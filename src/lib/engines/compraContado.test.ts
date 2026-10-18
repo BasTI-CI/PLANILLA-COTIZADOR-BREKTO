@@ -11,7 +11,7 @@ import { calcularResultadosCotizacion } from './calculosCotizacion'
 import { calcularDiversificacion } from './calculosDiversificacion'
 import { calcularMontosDesglosePieClp } from './calculosPie'
 import { cotizacionEfectiva, esCompraContado } from './compraContado'
-import { bonoPieUf, pieAPagarUf } from './desglosePieUf'
+import { bonoPieUf, pieAPagarUf, tieneBonoPie } from './desglosePieUf'
 import { validarResultadosCotizacion } from './validarCalculosCotizacion'
 
 const UF = 37_000
@@ -189,5 +189,22 @@ describe('compra contado (B-04)', () => {
     expect(ce.hipotecario.hipotecario_aprobacion_pct).toBe(0)
     const normal = cotBase()
     expect(cotizacionEfectiva(normal)).toBe(normal)
+  })
+
+  it('m. B-06: el pie efectivo no tiene bono pie', () => {
+    const c = cotConBi()
+    expect(tieneBonoPie(c.pie)).toBe(true)
+    expect(tieneBonoPie(cotizacionEfectiva(contado(c)).pie)).toBe(false)
+  })
+
+  it('n. B-08: con AG, las diferencias se calculan contra dividendo 0', () => {
+    const c = contado(cotBase())
+    c.promociones = { ...c.promociones, arriendo_garantizado: true }
+    c.rentabilidad = { ...c.rentabilidad, ag_meses: 12, arriendo_garantizado_clp: 600_000 }
+    const r = calcularResultadosCotizacion(c, UF)
+    expect(r.arriendo.tiene_ag).toBe(true)
+    expect(r.arriendo.dividendo_clp).toBe(0)
+    expect(r.arriendo.diferencia_div_ag_clp).toBe(600_000)
+    expect(r.arriendo.diferencia_div_mercado_clp).toBe(500_000)
   })
 })
