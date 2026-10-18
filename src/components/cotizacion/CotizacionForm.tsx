@@ -10,6 +10,7 @@ import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
 import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf, precioCompraTotalUf } from '@/lib/engines/precioCompra'
 import FormattedNumberInput from '../ui/FormattedNumberInput'
+import SwitchCompraContado from '../ui/SwitchCompraContado'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '@/lib/stock'
 import type { DatosPropiedad, PromocionesCotizacion } from '@/types'
@@ -1239,19 +1240,31 @@ create policy "inmobiliarias_select_anon"
 
       {/* ── Crédito hipotecario ── */}
       <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">🏦 Crédito hipotecario</h3>
-          <label
-            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            title="Pago único del 100 % del precio de compra, sin crédito (B-04)"
-          >
-            <input
-              type="checkbox"
-              checked={contado}
-              onChange={(e) => setCompraContado(cotizacionId, e.target.checked)}
-            />
-            Compra contado
-          </label>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          {/* B-04: cada etiqueta fija su lado; el switch alterna. */}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <h3 className="card-title" style={{ margin: 0 }}>
+              <span
+                onClick={() => setCompraContado(cotizacionId, false)}
+                style={{ cursor: 'pointer', opacity: contado ? 0.5 : 1, transition: 'opacity 0.2s' }}
+              >
+                🏦 Crédito hipotecario
+              </span>
+            </h3>
+            <SwitchCompraContado contado={contado} onChange={(v) => setCompraContado(cotizacionId, v)} />
+            <span
+              onClick={() => setCompraContado(cotizacionId, true)}
+              style={{
+                cursor: 'pointer',
+                fontSize: 15,
+                fontWeight: 700,
+                color: contado ? 'var(--color-gold)' : 'var(--color-text-muted)',
+                transition: 'color 0.2s',
+              }}
+            >
+              💰 Compra contado
+            </span>
+          </div>
           {!contado && (
             <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sistema Francés + seguros</span>
           )}
