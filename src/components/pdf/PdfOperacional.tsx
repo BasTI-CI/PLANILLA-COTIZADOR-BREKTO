@@ -17,10 +17,12 @@ import html2canvas from 'html2canvas'
 import type { Cotizacion, DatosGlobales, ResultadosCotizacion } from '@/types'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
+import { devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
 import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
 import { letraCotizacion } from '@/lib/cotizaciones'
+import { useAppStore } from '@/store/useAppStore'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -112,6 +114,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const tieneBod = propiedad.bodega_uf > 0
   const promociones = leyendaPromociones(cot)
   const cuotonTotalClp = desg.monto_cuoton_clp * Math.max(pie.cuoton_n_cuotas, 1) // monto total tramo cuotón
+  // Devolución de IVA de esta unidad, la misma del flujo 60m. Se lee del store (no de los args del
+  // exporter) para no tocar su firma; el prorrateo manual necesita todas las cotizaciones.
+  const { cotizaciones, diversificacion } = useAppStore.getState()
+  const ivaClp = devolucionIvaCotizacionClp(cot, cotizaciones, diversificacion, uf)
 
   const headerColStyle: React.CSSProperties = {
     fontSize: 10,
@@ -130,6 +136,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   return (
     <div
       data-pdf-page="true"
+      data-pdf-label={`Operacional Cotización ${letraCotizacion}`}
       style={{
         width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
         height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
@@ -274,7 +281,7 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
 
       {/* D. Resumen financiero — UF en bold, $ en gris */}
       <SubTitle>D · Resumen financiero</SubTitle>
-      <Grid cols={3}>
+      <Grid cols={4}>
         <StatBox
           label="VALOR ESCRITURACIÓN (100%)"
           value={fmtUF(r.valor_escritura_uf)}
@@ -291,6 +298,11 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           value={fmtUF(r.hipotecario.monto_credito_uf)}
           sub={fmtCLP(r.hipotecario.monto_credito_clp)}
           valueColor={T.accent}
+        />
+        <StatBox
+          label={diversificacion.diversif_iva_manual_override ? 'DEVOLUCIÓN DE IVA (MANUAL)' : 'DEVOLUCIÓN DE IVA'}
+          value={ivaClp == null ? 'No aplica' : uf > 0 ? fmtUF(ivaClp / uf) : '—'}
+          sub={ivaClp == null ? undefined : fmtCLP(ivaClp)}
         />
       </Grid>
 
@@ -382,12 +394,19 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
     const node = container.querySelector<HTMLElement>('[data-pdf-page="true"]')
     if (!node) throw new Error('No se encontró el nodo de la hoja operacional')
 
+    // Guardia anti-corte: la hoja tiene overflow hidden; lo que no cabe no sale en el PDF.
+    if (node.scrollHeight > node.clientHeight + 1) {
+      window.alert(`La hoja "${node.dataset.pdfLabel ?? 'operacional'}" no cabe completa: puede faltar información.`)
+    }
+
     // Captura
     const canvas = await html2canvas(node, {
       scale: 1.5,
       backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
+      scrollX: 0,
+      scrollY: 0,
       windowWidth: node.scrollWidth,
       windowHeight: node.scrollHeight,
     })
