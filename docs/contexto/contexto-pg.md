@@ -28,7 +28,7 @@ y avisa a PP. Si el encargo no cierra, **devuélvelo**; no lo rellenes con supue
 
 ```
 B-nn · <título>                           ← título de la ventana de Code
-Rama: <tipo>/<id-sin-guion>-<slug>  desde Cotizador_Dev
+Worktree: git worktree add ../PLANILLA-COTIZADOR-BREKTO-wt/<id> -b <tipo>/<id>-<slug> Testing
 Carga tu carril: /rol code
 
 Objetivo: …
@@ -38,7 +38,8 @@ Tests: escribe primero … ; deben pasar `pnpm test`, `pnpm exec tsc --noEmit` y
 Commits: [solo si BR lo autorizó] cada asunto termina en (B-nn). Rutas explícitas.
 Fuera de alcance: … (siempre: supabase/, docs/, variables_calculo.md)
 Al terminar: reporta a PP (qué hiciste, qué del encargo estaba mal, qué quedó fuera,
-hallazgos). NO hagas merge ni push hasta que BR lo autorice.
+hallazgos). Merge solo a Testing y solo si BR lo autorizó (contexto-comun §5). NO hagas push
+ni PR hasta que BR lo autorice.
 ```
 
 Un prompt = una tarea. Si el encargo trae dos, entrega dos prompts con el mismo ID y sufijo

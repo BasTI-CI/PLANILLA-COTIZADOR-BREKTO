@@ -59,6 +59,16 @@ const LIGHT = {
   borderCierre: '2px solid #cbd5e1',
 }
 
+/** Texto en modo claro (PDF sobre blanco): los tonos del tema oscuro no se leen ahí. */
+const LIGHT_TXT = {
+  texto: '#0f172a',
+  positivo: '#059669',
+  egreso: '#b45309',
+  error: '#b91c1c',
+  azul: '#1d4ed8',
+  muted: '#64748b',
+}
+
 function rowStyle(
   mes: number,
   mesesEntrega: number[],
@@ -142,6 +152,8 @@ export default function TablaCashflow60m({
   if (tabla.length === 0) return null
 
   const light = pdfMode && pdfLight
+  // En modo claro usa el tono de LIGHT_TXT; en oscuro, exactamente el color de siempre.
+  const tono = (claro: string, oscuro: string) => (light ? claro : oscuro)
   // Filas a renderizar en la tabla mes-a-mes (los cálculos de totales no usan este filtro).
   const filasVisibles = mesRango
     ? tabla.filter((f) => f.mes >= mesRango[0] && f.mes <= mesRango[1])
@@ -199,10 +211,10 @@ export default function TablaCashflow60m({
       {!annualOnly && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
           {[
-            { label: 'Capital final (M60)', value: fmtCLP(capitalFinal), color: 'var(--color-gold)' },
-            { label: 'Ganancia acumulada', value: fmtCLP(gananciaTotal), color: '#10b981' },
-            { label: 'Rentabilidad total', value: `${rentTotalPct.toFixed(1)}%`, color: '#60a5fa' },
-            { label: 'Entregas / Dev. IVA', value: `${hitosEntregaTxt} · ${hitosIvaTxt}`, color: '#d4a843' },
+            { label: 'Capital final (M60)', value: fmtCLP(capitalFinal), color: tono(LIGHT_TXT.egreso, 'var(--color-gold)') },
+            { label: 'Ganancia acumulada', value: fmtCLP(gananciaTotal), color: tono(LIGHT_TXT.positivo, '#10b981') },
+            { label: 'Rentabilidad total', value: `${rentTotalPct.toFixed(1)}%`, color: tono(LIGHT_TXT.azul, '#60a5fa') },
+            { label: 'Entregas / Dev. IVA', value: `${hitosEntregaTxt} · ${hitosIvaTxt}`, color: tono(LIGHT_TXT.egreso, '#d4a843') },
           ].map(({ label, value, color }) => (
             <div key={label} style={{ padding: '8px 12px', background: light ? '#f8fafc' : 'rgba(255,255,255,0.03)', borderRadius: 8, border: light ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.07)' }}>
               <div style={{ fontSize: pdfMode ? 8 : 10, color: light ? '#64748b' : 'var(--color-text-muted)', marginBottom: 3 }}>{label}</div>
@@ -239,9 +251,9 @@ export default function TablaCashflow60m({
           maxWidth: 920,
         }}
       >
-        <strong style={{ color: 'var(--color-text-secondary)' }}>Ganancia acumulada</strong> (penúltima columna){' '}
+        <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-secondary)') }}>Ganancia acumulada</strong> (penúltima columna){' '}
         es cada mes <strong>capital final del mes − capital inicial nominal</strong> (el monto que ingresaste en «Capital inicial», sin restar gastos de escrituración). La <strong>última columna</strong> es el <strong>capital al cierre</strong> de ese mes.
-        Por eso los primeros meses suelen verse <strong style={{ color: 'var(--color-error)' }}>en rojo</strong>: al inicio se descuentan gastos operacionales y amoblado del efectivo, y siguen los egresos de pie; el saldo queda por debajo del capital inicial «en papel» hasta que lo recuperan ahorro, rentabilidad e inyecciones (p. ej. IVA).
+        Por eso los primeros meses suelen verse <strong style={{ color: tono(LIGHT_TXT.error, 'var(--color-error)') }}>en rojo</strong>: al inicio se descuentan gastos operacionales y amoblado del efectivo, y siguen los egresos de pie; el saldo queda por debajo del capital inicial «en papel» hasta que lo recuperan ahorro, rentabilidad e inyecciones (p. ej. IVA).
         </p>
       )}
 
@@ -311,9 +323,9 @@ export default function TablaCashflow60m({
                     {rowIcon(f.mes, mesesEntrega, mesesIVA)}
                   </td>
                   <td style={tdBase}>{fmtCLP(f.capital_inicio)}</td>
-                  <td style={{ ...tdBase, color: 'var(--color-success)' }}>+{fmtCLP(f.ahorro_mensual)}</td>
-                  <td style={{ ...tdBase, color: '#60a5fa' }}>+{fmtCLP(f.rentabilizacion)}</td>
-                  <td style={{ ...tdBase, color: f.egreso_pie_clp > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>
+                  <td style={{ ...tdBase, color: tono(LIGHT_TXT.positivo, 'var(--color-success)') }}>+{fmtCLP(f.ahorro_mensual)}</td>
+                  <td style={{ ...tdBase, color: tono(LIGHT_TXT.azul, '#60a5fa') }}>+{fmtCLP(f.rentabilizacion)}</td>
+                  <td style={{ ...tdBase, color: f.egreso_pie_clp > 0 ? tono(LIGHT_TXT.egreso, 'var(--color-warning)') : tono(LIGHT_TXT.muted, 'var(--color-text-muted)') }}>
                     {f.egreso_pie_clp > 0 ? `-${fmtCLP(f.egreso_pie_clp)}` : '—'}
                   </td>
                   <td
@@ -321,10 +333,10 @@ export default function TablaCashflow60m({
                       ...tdBase,
                       color:
                         f.dividendo_menos_arriendo_clp > 0
-                          ? 'var(--color-warning)'
+                          ? tono(LIGHT_TXT.egreso, 'var(--color-warning)')
                           : f.dividendo_menos_arriendo_clp < 0
-                            ? 'var(--color-success)'
-                            : 'var(--color-text-muted)',
+                            ? tono(LIGHT_TXT.positivo, 'var(--color-success)')
+                            : tono(LIGHT_TXT.muted, 'var(--color-text-muted)'),
                     }}
                   >
                     {f.dividendo_menos_arriendo_clp > 0
@@ -333,13 +345,13 @@ export default function TablaCashflow60m({
                         ? `+${fmtCLP(Math.abs(f.dividendo_menos_arriendo_clp))}`
                         : '—'}
                   </td>
-                  <td style={{ ...tdBase, color: '#10b981', fontWeight: f.iva_inyeccion > 0 ? 700 : 400 }}>
+                  <td style={{ ...tdBase, color: tono(LIGHT_TXT.positivo, '#10b981'), fontWeight: f.iva_inyeccion > 0 ? 700 : 400 }}>
                     {f.iva_inyeccion > 0 ? `+${fmtCLP(f.iva_inyeccion)}` : '—'}
                   </td>
-                  <td style={{ ...tdBase, color: f.ganancia_acumulada >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  <td style={{ ...tdBase, color: f.ganancia_acumulada >= 0 ? tono(LIGHT_TXT.positivo, 'var(--color-success)') : tono(LIGHT_TXT.error, 'var(--color-error)') }}>
                     {f.ganancia_acumulada >= 0 ? '+' : ''}{fmtCLP(f.ganancia_acumulada)}
                   </td>
-                  <td style={{ ...tdBase, fontWeight: (isCierreAno || isEntrega) ? 700 : 500, color: f.capital_fin >= 0 ? 'var(--color-gold)' : 'var(--color-error)' }}>
+                  <td style={{ ...tdBase, fontWeight: (isCierreAno || isEntrega) ? 700 : 500, color: f.capital_fin >= 0 ? tono(LIGHT_TXT.egreso, 'var(--color-gold)') : tono(LIGHT_TXT.error, 'var(--color-error)') }}>
                     {fmtCLP(f.capital_fin)}
                   </td>
                 </tr>
@@ -369,13 +381,13 @@ export default function TablaCashflow60m({
               <tr key={a.ano} style={{ background: light ? '#f8fafc' : 'rgba(255,255,255,0.02)', borderBottom: light ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.06)' }}>
                 <td style={{ ...tdBase, fontWeight: 700, color: light ? '#b45309' : 'var(--color-gold)', textAlign: 'center' }}>Año {a.ano}</td>
                 <td style={{ ...tdBase, fontWeight: 700, color: light ? '#b45309' : 'var(--color-gold)' }}>{fmtCLP(a.capitalFin)}</td>
-                <td style={{ ...tdBase, color: 'var(--color-success)' }}>+{fmtCLP(a.ahorroAcum)}</td>
-                <td style={{ ...tdBase, color: '#60a5fa' }}>+{fmtCLP(a.rentAcum)}</td>
-                <td style={{ ...tdBase, color: 'var(--color-warning)' }}>{a.egresoPieAcum > 0 ? `-${fmtCLP(a.egresoPieAcum)}` : '—'}</td>
-                <td style={{ ...tdBase, color: a.divArrAcum > 0 ? 'var(--color-warning)' : a.divArrAcum < 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                <td style={{ ...tdBase, color: tono(LIGHT_TXT.positivo, 'var(--color-success)') }}>+{fmtCLP(a.ahorroAcum)}</td>
+                <td style={{ ...tdBase, color: tono(LIGHT_TXT.azul, '#60a5fa') }}>+{fmtCLP(a.rentAcum)}</td>
+                <td style={{ ...tdBase, color: tono(LIGHT_TXT.egreso, 'var(--color-warning)') }}>{a.egresoPieAcum > 0 ? `-${fmtCLP(a.egresoPieAcum)}` : '—'}</td>
+                <td style={{ ...tdBase, color: a.divArrAcum > 0 ? tono(LIGHT_TXT.egreso, 'var(--color-warning)') : a.divArrAcum < 0 ? tono(LIGHT_TXT.positivo, 'var(--color-success)') : tono(LIGHT_TXT.muted, 'var(--color-text-muted)') }}>
                   {a.divArrAcum > 0 ? `-${fmtCLP(a.divArrAcum)}` : a.divArrAcum < 0 ? `+${fmtCLP(Math.abs(a.divArrAcum))}` : '—'}
                 </td>
-                <td style={{ ...tdBase, color: a.ivaAcum > 0 ? '#10b981' : 'var(--color-text-muted)', fontWeight: a.ivaAcum > 0 ? 700 : 400 }}>
+                <td style={{ ...tdBase, color: a.ivaAcum > 0 ? tono(LIGHT_TXT.positivo, '#10b981') : tono(LIGHT_TXT.muted, 'var(--color-text-muted)'), fontWeight: a.ivaAcum > 0 ? 700 : 400 }}>
                   {a.ivaAcum > 0 ? `+${fmtCLP(a.ivaAcum)}` : '—'}
                 </td>
               </tr>
@@ -383,13 +395,13 @@ export default function TablaCashflow60m({
             <tr style={{ background: light ? 'rgba(251,191,36,0.15)' : 'rgba(212,168,67,0.12)', borderTop: light ? '2px solid #fbbf24' : '2px solid rgba(212,168,67,0.35)' }}>
               <td style={{ ...tdBase, fontWeight: 800, color: light ? '#92400e' : 'var(--color-gold)', textAlign: 'center', fontSize: 12 }}>RESUMEN TOTAL (60 m.)</td>
               <td style={{ ...tdBase, fontWeight: 800, color: light ? '#92400e' : 'var(--color-gold)' }}>{fmtCLP(t60.capitalFin)}</td>
-              <td style={{ ...tdBase, fontWeight: 700, color: 'var(--color-success)' }}>+{fmtCLP(t60.ahorroAcum)}</td>
-              <td style={{ ...tdBase, fontWeight: 700, color: '#60a5fa' }}>+{fmtCLP(t60.rentAcum)}</td>
-              <td style={{ ...tdBase, fontWeight: 700, color: 'var(--color-warning)' }}>{t60.egresoPieAcum > 0 ? `-${fmtCLP(t60.egresoPieAcum)}` : '—'}</td>
-              <td style={{ ...tdBase, fontWeight: 700, color: t60.divArrAcum > 0 ? 'var(--color-warning)' : t60.divArrAcum < 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+              <td style={{ ...tdBase, fontWeight: 700, color: tono(LIGHT_TXT.positivo, 'var(--color-success)') }}>+{fmtCLP(t60.ahorroAcum)}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: tono(LIGHT_TXT.azul, '#60a5fa') }}>+{fmtCLP(t60.rentAcum)}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: tono(LIGHT_TXT.egreso, 'var(--color-warning)') }}>{t60.egresoPieAcum > 0 ? `-${fmtCLP(t60.egresoPieAcum)}` : '—'}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: t60.divArrAcum > 0 ? tono(LIGHT_TXT.egreso, 'var(--color-warning)') : t60.divArrAcum < 0 ? tono(LIGHT_TXT.positivo, 'var(--color-success)') : tono(LIGHT_TXT.muted, 'var(--color-text-muted)') }}>
                 {t60.divArrAcum > 0 ? `-${fmtCLP(t60.divArrAcum)}` : t60.divArrAcum < 0 ? `+${fmtCLP(Math.abs(t60.divArrAcum))}` : '—'}
               </td>
-              <td style={{ ...tdBase, fontWeight: 700, color: '#10b981' }}>{t60.ivaAcum > 0 ? `+${fmtCLP(t60.ivaAcum)}` : '—'}</td>
+              <td style={{ ...tdBase, fontWeight: 700, color: tono(LIGHT_TXT.positivo, '#10b981') }}>{t60.ivaAcum > 0 ? `+${fmtCLP(t60.ivaAcum)}` : '—'}</td>
             </tr>
           </tbody>
         </table>
@@ -409,19 +421,19 @@ export default function TablaCashflow60m({
             <div style={{ fontWeight: 700, color: light ? '#b45309' : 'var(--color-gold)', marginBottom: 6, fontSize: pdfMode ? 10 : 12 }}>
               Variables del modelo (entrada al cálculo financiero)
             </div>
-            <span>Capital inicial considerado: <strong style={{ color: 'var(--color-text-primary)' }}>{fmtCLP(resumenContexto.capitalInicialClp)}</strong></span>
+            <span>Capital inicial considerado: <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{fmtCLP(resumenContexto.capitalInicialClp)}</strong></span>
             {' · '}
-            <span>Tasa rentabilidad mensual: <strong style={{ color: 'var(--color-text-primary)' }}>{(resumenContexto.tasaMensualDecimal * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</strong></span>
+            <span>Tasa rentabilidad mensual: <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{(resumenContexto.tasaMensualDecimal * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</strong></span>
             {' · '}
-            <span>Gastos operacionales (escrituración): <strong style={{ color: 'var(--color-text-primary)' }}>{fmtCLP(resumenContexto.gastosOperacionalesClp)}</strong></span>
+            <span>Gastos operacionales (escrituración): <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{fmtCLP(resumenContexto.gastosOperacionalesClp)}</strong></span>
             {' · '}
-            <span>Amoblado y otros: <strong style={{ color: 'var(--color-text-primary)' }}>{fmtCLP(resumenContexto.amobladoOtrosClp)}</strong></span>
+            <span>Amoblado y otros: <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{fmtCLP(resumenContexto.amobladoOtrosClp)}</strong></span>
             {' · '}
-            <span>Ahorro mensual (nominal): <strong style={{ color: 'var(--color-text-primary)' }}>{fmtCLP(resumenContexto.ahorroMensualClp)}/mes</strong></span>
+            <span>Ahorro mensual (nominal): <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{fmtCLP(resumenContexto.ahorroMensualClp)}/mes</strong></span>
             {' · '}
-            <span>Devolución IVA de referencia (total): <strong style={{ color: 'var(--color-text-primary)' }}>{fmtCLP(resumenContexto.ivaTotalReferenciaClp)}</strong></span>
+            <span>Devolución IVA de referencia (total): <strong style={{ color: tono(LIGHT_TXT.texto, 'var(--color-text-primary)') }}>{fmtCLP(resumenContexto.ivaTotalReferenciaClp)}</strong></span>
             {' · '}
-            <span>Ganancia acumulada (M60): <strong style={{ color: t60.gananciaAcum >= 0 ? '#10b981' : 'var(--color-error)' }}>{t60.gananciaAcum >= 0 ? '+' : ''}{fmtCLP(t60.gananciaAcum)}</strong></span>
+            <span>Ganancia acumulada (M60): <strong style={{ color: t60.gananciaAcum >= 0 ? tono(LIGHT_TXT.positivo, '#10b981') : tono(LIGHT_TXT.error, 'var(--color-error)') }}>{t60.gananciaAcum >= 0 ? '+' : ''}{fmtCLP(t60.gananciaAcum)}</strong></span>
           </div>
         )}
       </div>

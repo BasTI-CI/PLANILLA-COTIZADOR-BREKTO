@@ -118,6 +118,9 @@ export interface DatosRentabilidad {
   // ── Renta Larga ──────────────────────────────────────────────────
   // Ingreso mensual neto (después de comisión corretaje, vacancia, etc.)
   arriendo_mensual_clp: number           // $CLP neto final que va al flujo
+  // §3.5.1 · solo cuentan si promociones.arriendo_garantizado está encendido y tipo_renta='larga'
+  ag_meses: number                       // meses de arriendo garantizado (entero ≥ 0)
+  arriendo_garantizado_clp: number       // $CLP mensual neto durante los meses de AG
 
   // ── Renta Corta (AirBnB / alquiler temporal) ─────────────────────
   airbnb_admin_pct: number               // % comisión plataforma/administrador (decimal)
@@ -134,6 +137,7 @@ export interface Cotizacion {
   modo_fuente: FuenteDatos               // 'supabase' | 'manual'
   activa: boolean                        // si esta cotización tiene datos
   califica_iva: boolean                  // ☑ checkbox hoja Flujo — ¿la unidad recibe devolución IVA?
+  compra_contado?: boolean               // B-04: true = sin crédito ni BI, pago único del 100 %
   /** Mes absoluto (1–60) de entrega en el horizonte de 60 meses; `null` = sin definir (el asesor lo ingresa en Flujo). */
   mes_entrega_flujo: number | null
 
@@ -181,7 +185,15 @@ export interface ResultadosArriendo {
   resultado_mensual_clp: number          // ingreso_neto - dividendo
 
   // Renta Larga
-  cap_rate_anual_pct: number
+  cap_rate_anual_pct: number             // con arriendo de mercado, aunque haya AG
+
+  // Arriendo garantizado (§3.5.1) — contrato con el flujo 60m (B-07)
+  tiene_ag: boolean
+  ag_meses: number                       // efectivo; 0 si !tiene_ag
+  arriendo_garantizado_clp: number       // efectivo; 0 si !tiene_ag
+  dividendo_clp: number
+  diferencia_div_ag_clp: number          // AG − dividendo (meses 1…N); 0 si !tiene_ag
+  diferencia_div_mercado_clp: number     // larga: arriendo_mensual − dividendo; corta: 0
 
   // Renta Corta
   airbnb_ingreso_bruto_clp: number
@@ -317,6 +329,8 @@ export const DEFAULT_RENTABILIDAD: DatosRentabilidad = {
   plusvalia_anual_pct: 0.042,            // 4.2%
   plusvalia_anos: 5,
   arriendo_mensual_clp: 0,
+  ag_meses: 0,
+  arriendo_garantizado_clp: 0,
   airbnb_admin_pct: 0.25,
   gastos_comunes_clp: 0,
   airbnb_valor_dia_clp: 0,

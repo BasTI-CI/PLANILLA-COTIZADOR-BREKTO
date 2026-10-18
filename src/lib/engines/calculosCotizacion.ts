@@ -8,6 +8,7 @@ import type {
   ResultadosArriendo,
 } from '@/types'
 import { precioCompraTotalUf } from './precioCompra'
+import { cotizacionEfectiva, esCompraContado } from './compraContado'
 
 // ─────────────────────────────────────────────────────────────────
 // MOTOR DE CÁLCULO — fórmulas exactas de la planilla Excel
@@ -49,6 +50,9 @@ export function calcularResultadosCotizacion(
   cot: Cotizacion,
   uf_valor_clp: number
 ): ResultadosCotizacion {
+  // B-04: en compra contado se calcula con BI 0, pie 100 % y crédito 0 % (sin tocar el store).
+  cot = cotizacionEfectiva(cot)
+  const contado = esCompraContado(cot)
   const { propiedad, pie, hipotecario, rentabilidad } = cot
   const precio_neto_uf = propiedad.precio_neto_uf
   const bono_descuento_pct = propiedad.bono_descuento_pct
@@ -78,12 +82,18 @@ export function calcularResultadosCotizacion(
     console.warn('Revisar porcentajes ya que son diferentes a 100%')
   }
 
-  // Simulador hipotecario sobre valor de escrituración.
-  const hipResult = calcularHipotecario(
-    valor_escritura_uf,
-    hipotecario,
-    uf_valor_clp
-  )
+  // Simulador hipotecario sobre valor de escrituración. En contado no hay crédito: tampoco
+  // aplica el mínimo de seguros que `calcularHipotecario` cobra con monto 0 (B-04).
+  const hipResult: ResultadosHipotecario = contado
+    ? {
+        monto_credito_uf: 0,
+        monto_credito_clp: 0,
+        dividendo_capital_uf: 0,
+        dividendo_total_uf: 0,
+        dividendo_total_clp: 0,
+        tabla_amortizacion: [],
+      }
+    : calcularHipotecario(valor_escritura_uf, hipotecario, uf_valor_clp)
 
   // 5. Plusvalía / venta
   const plusvalia = calcularPlusvalia(
@@ -99,7 +109,8 @@ export function calcularResultadosCotizacion(
     rentabilidad,
     hipResult.dividendo_total_uf,
     valor_escritura_uf,
-    uf_valor_clp
+    uf_valor_clp,
+    !!cot.promociones?.arriendo_garantizado
   )
 
   return {
@@ -281,7 +292,9 @@ export function calcularArriendo(
   rent: Cotizacion['rentabilidad'],
   dividendo_total_uf: number,
   valor_escritura_uf: number,
-  uf_valor_clp: number
+  uf_valor_clp: number,
+  /** promociones.arriendo_garantizado (§3.5.1). */
+  ag_habilitado = false
 ): ResultadosArriendo {
   const { tipo_renta, arriendo_mensual_clp, airbnb_admin_pct } = rent
 
@@ -305,6 +318,14 @@ export function calcularArriendo(
   const airbnb_resultado_clp = tipo_renta === 'corta' ? ingreso_neto_clp : 0
   const airbnb_cap_rate_anual_pct = tipo_renta === 'corta' ? cap_rate_anual_pct : 0
 
+  // ── Arriendo garantizado (§3.5.1): solo renta larga; no altera flujo ni cap rate
+  const agMeses = Math.max(0, Math.floor(rent.ag_meses || 0))
+  const tiene_ag = tipo_renta === 'larga' && ag_habilitado && agMeses > 0
+  const arriendo_garantizado_clp = tiene_ag ? rent.arriendo_garantizado_clp || 0 : 0
+  const diferencia_div_ag_clp = tiene_ag ? arriendo_garantizado_clp - dividendo_clp : 0
+  const diferencia_div_mercado_clp =
+    tipo_renta === 'larga' ? (arriendo_mensual_clp || 0) - dividendo_clp : 0
+
   return {
     resultado_mensual_clp,
     cap_rate_anual_pct: tipo_renta === 'larga' ? cap_rate_anual_pct : 0,
@@ -313,6 +334,12 @@ export function calcularArriendo(
     airbnb_resultado_clp,
     airbnb_cap_rate_anual_pct,
     ingreso_neto_flujo_clp: ingreso_neto_clp,
+    tiene_ag,
+    ag_meses: tiene_ag ? agMeses : 0,
+    arriendo_garantizado_clp,
+    dividendo_clp,
+    diferencia_div_ag_clp,
+    diferencia_div_mercado_clp,
   }
 }
 

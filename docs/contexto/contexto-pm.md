@@ -58,3 +58,10 @@ Criterio de cierre: …
    abiertos? ¿Commits sin ficha? ¿Producción (`prod/main`) cambió sin que pasara por
    `capitalti/dev`? Regístralo.
 3. Reporta a BR en 5 líneas: qué cambió, qué está bloqueado, cuál es el P0.
+
+## 5. Enrutar a BR hacia las ventanas (BINDING · 2026-10-16, pedido de BR)
+
+Cuando algo requiere que BR actúe o revise en otra ventana, el PM se lo dice con la forma
+**«anda a la ventana `B-nn · PP`»** (o `· PG`, `· <título de Code>`), con el **título exacto** de
+la ventana y **qué hacer ahí**. Así BR audita los cambios por agente, en la ventana que los hizo.
+Un hallazgo de BR sobre un ID se enruta a la ventana PP de ese ID, no se resuelve en la del PM.
