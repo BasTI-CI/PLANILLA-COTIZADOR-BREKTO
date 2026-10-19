@@ -8,6 +8,14 @@ export type MapUnidadToPropiedadOptions = {
 const DEFAULT_RESERVA = 100_000
 
 /**
+ * B-11: el barrio lo escribe el asesor; ninguna fuente de stock lo llena.
+ * Punto único a reemplazar si a futuro una API sugiere un valor.
+ */
+export function barrioInicialAlCargarUnidad(): string {
+  return ''
+}
+
+/**
  * Puente único: fila de stock normalizada → `DatosPropiedad` del motor.
  * Cualquier nuevo backend debe mapear primero a `UnidadSupabase` y luego usar esto,
  * o extender esta función con opciones explícitas (sin tocar fórmulas en engines).
@@ -23,7 +31,7 @@ export function unidadSupabaseToDatosPropiedad(
     // Si no vienen, fallback al `ProyectoSupabase` (catálogo local del cotizador).
     proyecto_nombre: unidad.proyecto_nombre || proyecto.nombre,
     proyecto_comuna: unidad.comuna || proyecto.comuna,
-    proyecto_barrio: proyecto.barrio ?? '',
+    proyecto_barrio: barrioInicialAlCargarUnidad(),
     // Oculto hasta cierre comercial; no se lee del stock aunque exista.
     proyecto_direccion: '',
     unidad_numero: unidad.numero,
