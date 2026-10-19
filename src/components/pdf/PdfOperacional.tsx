@@ -1,7 +1,7 @@
 /**
  * PDF Operacional / UGC / Jira — exportable de uso interno.
  *
- * Una hoja Letter portrait por cotización individual, descarga directa
+ * Una hoja Letter portrait por cotización individual (una 2ª si no cabe, B-10), descarga directa
  * (sin preview en pantalla). Renderiza off-screen vía createRoot, captura
  * con html2canvas, descarga con jsPDF y desmonta.
  *
@@ -24,6 +24,8 @@ import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
 import { letraCotizacion } from '@/lib/cotizaciones'
 import { useAppStore } from '@/store/useAppStore'
+import { repartirEnHojas } from './repartirEnHojas'
+import { Bloque, useAlturas, esperarLayoutEstable, MEDICION_STYLE } from './useAlturas'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -38,6 +40,10 @@ const T = {
 
 const PAGE_PORTRAIT_MM = { w: 215.9, h: 279.4 }
 const MM_TO_PX = 96 / 25.4 // ~3.78
+const PAD_V_MM = 11
+const PAD_H_MM = 12
+/** Holgura que se deja libre al fondo de cada hoja (px). */
+const MARGEN_SEGURIDAD_PX = 4
 
 // ----- Helpers visuales (paleta clara, compactos) -----
 
@@ -84,7 +90,8 @@ interface SheetProps {
   letraCotizacion: string
 }
 
-function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, letraCotizacion }: SheetProps) {
+function PdfOperacionalHojas({ cot, global, inmobiliariaNombre, proyectoNombre, letraCotizacion }: SheetProps) {
+  const { ref: medicionRef, alto } = useAlturas()
   const uf = global.uf_valor_clp
   const r: ResultadosCotizacion = calcularResultadosCotizacion(cot, uf)
   // B-04: se muestra la cotización efectiva (en contado: sin BI, pie 100 % upfront, crédito 0 %).
@@ -137,40 +144,14 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
     marginBottom: 2,
   }
 
-  return (
-    <div
-      data-pdf-page="true"
-      data-pdf-label={`Operacional Cotización ${letraCotizacion}`}
-      style={{
-        width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
-        height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
-        background: '#ffffff',
-        color: T.text,
-        boxSizing: 'border-box',
-        padding: '11mm 12mm',
-        overflow: 'hidden',
-        fontFamily: 'Inter, Helvetica, Arial, sans-serif',
-        position: 'relative',
-      }}
-    >
-      {/* Fecha + UF — esquina superior DERECHA absoluta, sobre el header */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '11mm',
-          right: '12mm',
-          textAlign: 'right',
-          fontSize: 9,
-          color: T.muted,
-          lineHeight: 1.4,
-        }}
-      >
-        <div>{new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-        <div style={{ fontWeight: 700, color: T.text }}>
-          1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </div>
-      </div>
-
+  // Encabezado completo (1ª hoja) y mínimo (hojas siguientes): solo el badge con «Hoja N de M».
+  const badge = (hojaTxt: string) => (
+    <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
+      COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC{contado ? ' · COMPRA CONTADO' : ''}{hojaTxt}
+    </div>
+  )
+  const encabezado = (hojaTxt: string) => (
+    <>
       {/* HEADER: 2 columnas — Asesor (izq) / Cliente (der) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, paddingBottom: 6, paddingRight: 80, borderBottom: `1px solid ${T.border}` }}>
         <div style={headerColStyle}>
@@ -195,10 +176,12 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
       </div>
 
       {/* Badge de uso interno */}
-      <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
-        COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC{contado ? ' · COMPRA CONTADO' : ''}
-      </div>
+      {badge(hojaTxt)}
+    </>
+  )
 
+  const seccionA = (
+    <>
       {/* A. Antecedentes de la propiedad */}
       <SubTitle>A · Antecedentes de la propiedad</SubTitle>
       <Grid cols={4}>
@@ -207,7 +190,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         <StatBox label="Sup. total" value={`${propiedad.unidad_sup_total_m2} m²`} sub={`int ${propiedad.unidad_sup_interior_m2} / terr ${propiedad.unidad_sup_terraza_m2}`} />
         <StatBox label="Orientación" value={propiedad.unidad_orientacion || '—'} sub={`Entrega: ${propiedad.unidad_entrega || '—'}`} />
       </Grid>
-
+    </>
+  )
+  const seccionB = (
+    <>
       {/* B. Detalle precios y descuentos — flujo izq→der: Lista → (−Descuentos) → SUBTOTAL → (+Bonif al pie) → VALOR FINAL */}
       <SubTitle>B · Detalle precios y descuentos</SubTitle>
       <Grid cols={contado ? 5 : 6}>
@@ -231,7 +217,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         )}
         <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
-
+    </>
+  )
+  const seccionC1 = (
+    <>
       {/* C.1 Pie a documentar (referencia, antes del desglose) */}
       <SubTitle>C.1 · Pie y forma de pago</SubTitle>
       <Grid cols={tieneBonoPie(pie) ? 2 : 1}>
@@ -249,9 +238,11 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           />
         )}
       </Grid>
-
+    </>
+  )
+  const seccionC2 = (
+    <>
       {/* C.2 Pie a pagar + desglose horizontal de cuotas (no aplica en compra contado) */}
-      {!contado && (<>
       <SubTitle>C.2 · Desglose de pago pie restante</SubTitle>
       <Grid cols={1}>
         <StatBox
@@ -286,8 +277,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           }
         />
       </Grid>
-      </>)}
-
+    </>
+  )
+  const seccionD = (
+    <>
       {/* D. Resumen financiero — UF en bold, $ en gris */}
       <SubTitle>D · Resumen financiero</SubTitle>
       <Grid cols={4}>
@@ -318,7 +311,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           sub={ivaClp == null ? undefined : fmtCLP(ivaClp)}
         />
       </Grid>
-
+    </>
+  )
+  const seccionE = (
+    <>
       {/* E. Promociones */}
       <SubTitle>E · Promociones de la cotización</SubTitle>
       {promociones.length > 0 ? (
@@ -330,7 +326,90 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
       ) : (
         <div style={{ fontSize: 10, color: T.muted, fontStyle: 'italic' }}>Sin promociones aplicables.</div>
       )}
-    </div>
+    </>
+  )
+
+  const secciones = [
+    { id: 'a', node: seccionA },
+    { id: 'b', node: seccionB },
+    { id: 'c1', node: seccionC1 },
+    // C.2 no aplica en compra contado
+    ...(contado ? [] : [{ id: 'c2', node: seccionC2 }]),
+    { id: 'd', node: seccionD },
+    { id: 'e', node: seccionE },
+  ]
+
+  // Reparto (B-10). Toda hoja lleva al menos el encabezado mínimo; la 1ª suma la diferencia con el
+  // completo, que va como primer ítem para que quede siempre en ella. En el caso normal: 1 hoja.
+  const altoUtil = PAGE_PORTRAIT_MM.h * MM_TO_PX - 2 * PAD_V_MM * MM_TO_PX - MARGEN_SEGURIDAD_PX
+  const hojas = repartirEnHojas(
+    [alto('enc') - alto('enc-min'), ...secciones.map((sec) => alto(sec.id))],
+    altoUtil - alto('enc-min')
+  ).map((idx) => idx.filter((i) => i > 0).map((i) => secciones[i - 1]))
+  const hojaTxt = (n: number) => (hojas.length > 1 ? ` · HOJA ${n + 1} DE ${hojas.length}` : '')
+
+  const pageStyle: React.CSSProperties = {
+    width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
+    height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
+    background: '#ffffff',
+    color: T.text,
+    boxSizing: 'border-box',
+    padding: `${PAD_V_MM}mm ${PAD_H_MM}mm`,
+    overflow: 'hidden',
+    fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+    position: 'relative',
+  }
+
+  return (
+    <>
+      {hojas.map((secs, n) => (
+        <div
+          key={n}
+          data-pdf-page="true"
+          data-pdf-label={n === 0 ? `Operacional Cotización ${letraCotizacion}` : `Operacional Cotización ${letraCotizacion} · Hoja ${n + 1}`}
+          style={pageStyle}
+        >
+          {n === 0 ? (
+            <>
+              {/* Fecha + UF — esquina superior DERECHA absoluta, sobre el header */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '11mm',
+                  right: '12mm',
+                  textAlign: 'right',
+                  fontSize: 9,
+                  color: T.muted,
+                  lineHeight: 1.4,
+                }}
+              >
+                <div>{new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                <div style={{ fontWeight: 700, color: T.text }}>
+                  1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+
+              <Bloque>{encabezado(hojaTxt(n))}</Bloque>
+            </>
+          ) : (
+            <Bloque>{badge(hojaTxt(n))}</Bloque>
+          )}
+          {secs.map((sec) => <Bloque key={sec.id}>{sec.node}</Bloque>)}
+        </div>
+      ))}
+
+      {/* MEDICIÓN (B-10) — fuera de vista, mismo ancho de contenido y tipografía que la hoja. */}
+      <div
+        ref={medicionRef}
+        data-pdf-medicion
+        aria-hidden
+        style={{ ...MEDICION_STYLE, width: PAGE_PORTRAIT_MM.w * MM_TO_PX - 2 * PAD_H_MM * MM_TO_PX, fontFamily: pageStyle.fontFamily, color: T.text }}
+      >
+        <Bloque medir="enc">{encabezado('')}</Bloque>
+        <Bloque medir="enc-min">{badge('')}</Bloque>
+        {secciones.map((sec) => <Bloque key={sec.id} medir={sec.id}>{sec.node}</Bloque>)}
+      </div>
+    </>
   )
 }
 
@@ -388,7 +467,7 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
 
   try {
     root.render(
-      <PdfOperacionalSheet
+      <PdfOperacionalHojas
         cot={cot}
         global={global}
         inmobiliariaNombre={inmobiliariaNombre}
@@ -397,32 +476,38 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
       />
     )
 
-    // Esperar 2 frames para que React monte y los layouts se estabilicen
+    // Esperar 2 frames para que React monte; luego fuentes + 2 frames para que el reparto (B-10) quede estable
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     )
+    await esperarLayoutEstable()
     // Pequeño extra para que la imagen del isotipo termine de cargar (opcional, en clones rápidos suele estar lista)
     await new Promise((r) => setTimeout(r, 80))
 
-    const node = container.querySelector<HTMLElement>('[data-pdf-page="true"]')
-    if (!node) throw new Error('No se encontró el nodo de la hoja operacional')
+    const nodes = Array.from(container.querySelectorAll<HTMLElement>('[data-pdf-page="true"]'))
+    if (nodes.length === 0) throw new Error('No se encontró el nodo de la hoja operacional')
 
     // Guardia anti-corte: la hoja tiene overflow hidden; lo que no cabe no sale en el PDF.
-    if (node.scrollHeight > node.clientHeight + 1) {
-      window.alert(`La hoja "${node.dataset.pdfLabel ?? 'operacional'}" no cabe completa: puede faltar información.`)
+    const cortada = nodes.find((node) => node.scrollHeight > node.clientHeight + 1)
+    if (cortada) {
+      window.alert(`La hoja "${cortada.dataset.pdfLabel ?? 'operacional'}" no cabe completa: puede faltar información.`)
     }
 
     // Captura
-    const canvas = await html2canvas(node, {
-      scale: 1.5,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: node.scrollWidth,
-      windowHeight: node.scrollHeight,
-    })
+    const canvases = await Promise.all(
+      nodes.map((node) =>
+        html2canvas(node, {
+          scale: 1.5,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: node.scrollWidth,
+          windowHeight: node.scrollHeight,
+        })
+      )
+    )
 
     // Loop de calidad para mantener < 2 MB
     let quality = 0.85
@@ -430,7 +515,10 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
     let lastSize = 0
     for (let attempt = 0; attempt < 10; attempt++) {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true })
-      pdf.addImage(canvas.toDataURL('image/jpeg', quality), 'JPEG', 0, 0, 215.9, 279.4)
+      canvases.forEach((canvas, i) => {
+        if (i > 0) pdf.addPage('letter', 'portrait')
+        pdf.addImage(canvas.toDataURL('image/jpeg', quality), 'JPEG', 0, 0, 215.9, 279.4)
+      })
       const blob = pdf.output('blob')
       lastPdf = pdf
       lastSize = blob.size
