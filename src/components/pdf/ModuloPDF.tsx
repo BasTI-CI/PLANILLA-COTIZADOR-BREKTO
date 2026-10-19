@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useRef } from 'react'
+import { repartirEnHojas } from './repartirEnHojas'
+import { Bloque, useAlturas, esperarLayoutEstable, MEDICION_STYLE } from './useAlturas'
 import { useAppStore } from '@/store/useAppStore'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularDiversificacion, calcularIvaTotal, devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
@@ -65,7 +67,7 @@ const SECCIONES = [
   { id: 'flujo', label: 'Hoja 4 — Gráficos + Tabla anual', icon: '💰' },
   ...Array.from({ length: MAX_COTIZACIONES }, (_, i) => ({
     id: `cot${letraCotizacion(i)}`,
-    label: `Cotización ${letraCotizacion(i)} (2 hojas)`,
+    label: `Cotización ${letraCotizacion(i)} (2 o más hojas)`,
     icon: '🏠',
   })),
 ]
@@ -79,6 +81,12 @@ const KPIS_POR_HOJA = 10
 /** Columnas de la grilla de KPIs: con 6–10 tarjetas quedan 2 filas. */
 const KPIS_COLUMNAS = 5
 
+/** Separación entre filas de la grilla de KPIs (px). */
+const KPIS_GAP_PX = 10
+
+/** Filas mensuales por hoja en el anexo 60m. */
+const ANEXO_FILAS_POR_HOJA = 24
+
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
 // ----- Paginación PDF (formato Letter / Carta) -----
@@ -90,6 +98,31 @@ const PAGE_LETTER_LANDSCAPE_MM = { w: 279.4, h: 215.9 }
 const MM_TO_PX = 96 / 25.4 // ~3.7795 (96 dpi base)
 
 type PdfOrientation = 'portrait' | 'landscape'
+
+// ----- Auto-paginación (B-10) -----
+// Cada sección se mide fuera de vista y `repartirEnHojas` decide en qué hoja va: lo que no cabe pasa
+// entero a la hoja siguiente. La guardia de generarPDF queda como red final.
+const PAD_PORTADA_MM = 20
+const PAD_LANDSCAPE_MM = 10
+const PAD_COT_MM = 14
+const PAD_ANEXO_MM = 6
+/** Holgura que se deja libre al fondo de cada hoja (px). */
+const MARGEN_SEGURIDAD_PX = 4
+
+const dimsPx = (orientation: PdfOrientation) => {
+  const mm = orientation === 'portrait' ? PAGE_LETTER_PORTRAIT_MM : PAGE_LETTER_LANDSCAPE_MM
+  return { w: mm.w * MM_TO_PX, h: mm.h * MM_TO_PX }
+}
+/** Alto disponible para contenido: alto de la hoja − padding arriba y abajo − holgura. */
+const altoUtilPx = (orientation: PdfOrientation, paddingMm: number) =>
+  dimsPx(orientation).h - 2 * paddingMm * MM_TO_PX - MARGEN_SEGURIDAD_PX
+/** Ancho de contenido de la hoja: el contenedor de medición usa este mismo ancho. */
+const anchoUtilPx = (orientation: PdfOrientation, paddingMm: number) =>
+  dimsPx(orientation).w - 2 * paddingMm * MM_TO_PX
+
+const suma = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+
+type Seccion = { id: string; node: React.ReactNode }
 
 /**
  * Isotipo Brekto — imagen oficial guardada en `src/assets/ISOTIPO.BRIKTO-2.png`.
@@ -235,8 +268,9 @@ function TablaCot({ headers, children, columnAlignments }: {
   columnAlignments?: ('left' | 'right' | 'center')[]
 }) {
   const align = (i: number) => columnAlignments?.[i] ?? (i === 0 ? 'left' : 'right')
+  // Sin margen inferior: cada sección va en su Bloque (flow-root) y el SubTitle siguiente aporta la separación.
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 8 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
       <thead>
         <tr style={{ background: T.accent }}>
           {headers.map((h, i) => (
@@ -316,12 +350,13 @@ function CotBandaSuperior({ c, letra, hojaLabel, uf }: {
         marginLeft: '-14mm',
         marginRight: '-14mm',
         marginTop: '-14mm',
-        marginBottom: 14,
+        // 2 px + los 12 px del SubTitle de la primera sección = los 14 px de siempre (los Bloques no colapsan márgenes).
+        marginBottom: 2,
         position: 'relative',
         boxSizing: 'border-box',
       }}
     >
-      {/* Hoja N de 2 — esquina superior izquierda */}
+      {/* Hoja N de M — esquina superior izquierda */}
       <div style={{ position: 'absolute', top: 12, left: 18, fontSize: 9, opacity: 0.75, letterSpacing: '0.05em', fontWeight: 600 }}>
         {hojaLabel.toUpperCase()}
       </div>
@@ -363,13 +398,13 @@ function InfoCard({ titulo, lineas }: { titulo: string; lineas: { label: string;
   )
 }
 
-function renderBloqueAE(
+/** Secciones de la primera parte de la cotización: Resumen general, A, B y C (sin la banda). */
+function seccionesHoja1(
   c: Cotizacion,
-  letra: string,
   r: ResultadosCotizacion,
   uf: number,
   global: { asesor_nombre: string; asesor_correo: string; inversionista_nombre: string; inversionista_correo: string; inversionista_rut: string }
-) {
+): Seccion[] {
   // B-04: se muestra la cotización efectiva (en contado: sin BI, pie 100 % upfront, crédito 0 %).
   const contado = esCompraContado(c)
   const ce = cotizacionEfectiva(c)
@@ -384,17 +419,19 @@ function renderBloqueAE(
   const tieneEst = propiedad.estacionamiento_uf > 0
   const tieneBod = propiedad.bodega_uf > 0
 
-  return (
-    <>
-      <CotBandaSuperior c={c} letra={letra} hojaLabel="Hoja 1 de 2" uf={uf} />
+  // P-16: la inmobiliaria nunca va al cliente; del proyecto solo nombre, comuna y barrio (si lo hay).
+  const barrio = propiedad.proyecto_barrio?.trim() ?? ''
 
+  const resumen = (
+    <>
       <SubTitle>Resumen general</SubTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         <InfoCard
           titulo="Información del Proyecto"
           lineas={[
-            { label: 'Inmobiliaria', value: propiedad.proyecto_nombre || '—' },
             { label: 'Proyecto', value: propiedad.proyecto_nombre || '—' },
+            { label: 'Comuna', value: propiedad.proyecto_comuna || '—' },
+            ...(barrio ? [{ label: 'Barrio', value: barrio }] : []),
             { label: 'Unidad', value: propiedad.unidad_numero || '—' },
             { label: 'Tipo de Entrega', value: propiedad.unidad_entrega || '—' },
           ]}
@@ -415,7 +452,11 @@ function renderBloqueAE(
           ]}
         />
       </div>
+    </>
+  )
 
+  const a = (
+    <>
       <SubTitle>A · Detalle de la unidad</SubTitle>
       <TablaCot
         headers={['Número', 'Piso', 'Orientación', 'Sup. interior', 'Sup. terraza', 'Sup. total']}
@@ -433,7 +474,11 @@ function renderBloqueAE(
           ]}
         />
       </TablaCot>
+    </>
+  )
 
+  const b = (
+    <>
       {/* B · Detalle de Precio de compra y Valor de Escrituración
             Orden lógico: lista → descuentos → PRECIO COMPRA depto → BI → VALOR ESCRITURACIÓN depto → adicionales → VALOR ESCRITURACIÓN total. */}
       <SubTitle>B · Detalle de Precio de compra y Valor de Escrituración</SubTitle>
@@ -468,7 +513,11 @@ function renderBloqueAE(
           <Row destacada cells={['VALOR ESCRITURACIÓN TOTAL', fmtUF(r.valor_escritura_uf), fmtCLP(r.valor_escritura_uf * uf)]} />
         )}
       </TablaCot>
+    </>
+  )
 
+  const cPie = (
+    <>
       {/* C · Pie y Forma de Pago
             Configuración del pie a partir del valor escrituración: documentado → bono → a pagar,
             y desglose de cuotas (upfront / antes / después / cuotón / total). */}
@@ -518,17 +567,24 @@ function renderBloqueAE(
       )}
     </>
   )
+
+  return [
+    { id: 'resumen', node: resumen },
+    { id: 'a', node: a },
+    { id: 'b', node: b },
+    { id: 'c', node: cPie },
+  ]
 }
 
-function renderBloqueFG(
+/** Secciones de la segunda parte: D, E, Relación Arriendo/Dividendo, F y Política (sin la banda). */
+function seccionesHoja2(
   c: Cotizacion,
-  letra: string,
   r: ResultadosCotizacion,
   uf: number,
   global: { asesor_nombre: string; asesor_correo: string; inversionista_nombre: string; inversionista_correo: string; inversionista_rut: string },
   cotizaciones: Cotizacion[],
   diversificacion: DatosDiversificacion
-) {
+): Seccion[] {
   // B-04: crédito efectivo (0 % en compra contado).
   const contado = esCompraContado(c)
   const hip = cotizacionEfectiva(c).hipotecario
@@ -545,10 +601,8 @@ function renderBloqueFG(
     ? <Row cells={['Dividendo (compra contado: sin crédito)', fmtUF(0), fmtCLP(0)]} />
     : <Row cells={['Dividendo mensual', fmtUF(r.hipotecario.dividendo_total_uf), fmtCLP(r.hipotecario.dividendo_total_clp)]} />
 
-  return (
+  const d = (
     <>
-      <CotBandaSuperior c={c} letra={letra} hojaLabel="Hoja 2 de 2" uf={uf} />
-
       {/* D · Escrituración y Crédito Hipotecario — datos clave del crédito y dividendo. */}
       <SubTitle>D · Escrituración y Crédito Hipotecario</SubTitle>
       <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
@@ -567,7 +621,11 @@ function renderBloqueFG(
           </>
         )}
       </TablaCot>
+    </>
+  )
 
+  const e = (
+    <>
       {/* E · Resultado de la cotización — outputs clave para decisión del cliente. */}
       <SubTitle>E · Resultado de la cotización</SubTitle>
       <TablaCot headers={['Concepto', 'Valor UF', 'Valor CLP']}>
@@ -587,7 +645,11 @@ function renderBloqueFG(
             : [ivaLabel, uf > 0 ? fmtUF(ivaClp / uf) : '—', fmtCLP(ivaClp)]
         } />
       </TablaCot>
+    </>
+  )
 
+  const arriendo = (
+    <>
       {/* Relación Arriendo / Dividendo (B-08) — sin letra; AG solo si aplica (§3.5.1), mercado siempre.
           Dividendo una sola vez arriba; el monto va en la fila-título de cada apartado para que la Hoja 2 no se corte. */}
       <SubTitle>Relación Arriendo / Dividendo</SubTitle>
@@ -614,7 +676,11 @@ function renderBloqueFG(
           fmtCLP(r.arriendo.resultado_mensual_clp),
         ]} />
       </TablaCot>
+    </>
+  )
 
+  const f = (
+    <>
       <SubTitle>F · Promociones de la Cotización</SubTitle>
       {promociones.length > 0 ? (
         <TablaCot headers={['Promoción aplicable']} columnAlignments={['left']}>
@@ -627,23 +693,33 @@ function renderBloqueFG(
           Sin promociones aplicables para esta cotización.
         </div>
       )}
-
-      <div style={{ marginTop: 14, padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 6 }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: T.accent, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-          Política de Cotización y Reserva
-        </div>
-        <div style={{ fontSize: 9.5, color: T.text, lineHeight: 1.5 }}>
-          La información detallada en esta cotización es referencial y será tratada como un borrador hasta que se realice
-          una reserva formal. Antecedentes de precio, descuentos, condiciones y disponibilidad están sujetos a cambios sin
-          previo aviso. La cotización no garantiza la disponibilidad de la unidad ni la vigencia de los términos ofrecidos
-          hasta que se concrete la reserva.
-          {' '}<strong>Asesor:</strong> {global.asesor_nombre || '—'}
-          {global.asesor_correo && <span> · {global.asesor_correo}</span>}
-          {' '}<strong style={{ marginLeft: 8 }}>Cliente:</strong> {global.inversionista_nombre || '—'}
-        </div>
-      </div>
     </>
   )
+
+  const politica = (
+    <div style={{ marginTop: 14, padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 6 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: T.accent, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+        Política de Cotización y Reserva
+      </div>
+      <div style={{ fontSize: 9.5, color: T.text, lineHeight: 1.5 }}>
+        La información detallada en esta cotización es referencial y será tratada como un borrador hasta que se realice
+        una reserva formal. Antecedentes de precio, descuentos, condiciones y disponibilidad están sujetos a cambios sin
+        previo aviso. La cotización no garantiza la disponibilidad de la unidad ni la vigencia de los términos ofrecidos
+        hasta que se concrete la reserva.
+        {' '}<strong>Asesor:</strong> {global.asesor_nombre || '—'}
+        {global.asesor_correo && <span> · {global.asesor_correo}</span>}
+        {' '}<strong style={{ marginLeft: 8 }}>Cliente:</strong> {global.inversionista_nombre || '—'}
+      </div>
+    </div>
+  )
+
+  return [
+    { id: 'd', node: d },
+    { id: 'e', node: e },
+    { id: 'arriendo', node: arriendo },
+    { id: 'f', node: f },
+    { id: 'politica', node: politica },
+  ]
 }
 
 // ----- Componente principal -----
@@ -658,6 +734,7 @@ export default function ModuloPDF() {
   const [anexoTabla60m, setAnexoTabla60m] = useState(false)
   const [generando, setGenerando] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
+  const { ref: medicionRef, alto, filas } = useAlturas()
   // Asesor y cliente leen del store global. Se editan desde la pestaña Cotización (tarjeta "Datos del Documento").
   const asesor = global.asesor_nombre
   const asesorMail = global.asesor_correo
@@ -688,13 +765,55 @@ export default function ModuloPDF() {
   const enPropuesta = activas
     .map((c, i) => ({ c, r: resultados[i] }))
     .filter(({ c }) => secciones.has(`cot${letraCotizacion(c.id)}`))
-  const partir = (porHoja: number) => {
-    const bloques: (typeof enPropuesta)[] = []
-    for (let i = 0; i < enPropuesta.length; i += porHoja) bloques.push(enPropuesta.slice(i, i + porHoja))
-    return bloques
-  }
-  const bloquesComparativa = partir(COMPARATIVA_POR_HOJA)
-  const bloquesKpis = partir(KPIS_POR_HOJA)
+
+  // ----- Reparto en hojas por alturas medidas (B-10) -----
+  // Las tablas por filas descuentan su parte fija (título + cabecera), que se repite en cada hoja.
+  const filasPortada = filas('portada-tabla', enPropuesta.length)
+  const fijoPortada = enPropuesta.length > 0 ? alto('portada-tabla') - suma(filasPortada) : 0
+  // El encabezado va como primer ítem: siempre queda en la primera hoja y empuja las filas que no caben.
+  const hojasPortada = repartirEnHojas(
+    [alto('portada-enc'), ...filasPortada],
+    altoUtilPx('portrait', PAD_PORTADA_MM) - fijoPortada
+  ).map((idx) => ({ conEncabezado: idx.includes(0), filas: idx.filter((i) => i > 0).map((i) => enPropuesta[i - 1]) }))
+
+  const filasComparativa = filas('comparativa', enPropuesta.length)
+  const bloquesComparativa = repartirEnHojas(
+    filasComparativa,
+    altoUtilPx('landscape', PAD_LANDSCAPE_MM) - (alto('comparativa') - suma(filasComparativa)),
+    COMPARATIVA_POR_HOJA
+  ).map((idx) => idx.map((i) => enPropuesta[i]))
+
+  // KPIs: se reparten filas de la grilla. Las columnas son las mismas en todas las hojas (como se midieron).
+  const kpisColumnas = Math.max(1, Math.min(enPropuesta.length, KPIS_COLUMNAS))
+  const kpisFilas = Math.ceil(enPropuesta.length / kpisColumnas)
+  const bloquesKpis = repartirEnHojas(
+    // Una tarjeta estirada mide lo mismo que su fila; cada fila suma el gap que la separa de la anterior.
+    Array.from({ length: kpisFilas }, (_, f) => alto(`kpi-${f * kpisColumnas}`) + KPIS_GAP_PX),
+    altoUtilPx('landscape', PAD_LANDSCAPE_MM) - alto('kpis-titulo') + KPIS_GAP_PX,
+    Math.max(1, Math.floor(KPIS_POR_HOJA / kpisColumnas))
+  ).map((idx) => idx.flatMap((f) => enPropuesta.slice(f * kpisColumnas, (f + 1) * kpisColumnas)))
+
+  const cotsEnPdf = activas
+    .filter((c) => secciones.has(`cot${letraCotizacion(c.id)}`))
+    .map((c) => {
+      const r = calcularResultadosCotizacion(c, uf)
+      return {
+        c,
+        letra: letraCotizacion(c.id),
+        hoja1: seccionesHoja1(c, r, uf, global),
+        hoja2: seccionesHoja2(c, r, uf, global, cotizaciones, diversificacion),
+      }
+    })
+
+  const anexoVisible = anexoTabla60m && activas.length > 0 && tabla60.length > 0
+  const filasAnexo = filas('anexo', tabla60.length)
+  const hojasAnexo = anexoVisible
+    ? repartirEnHojas(
+        filasAnexo,
+        altoUtilPx('landscape', PAD_ANEXO_MM) - (alto('anexo') - suma(filasAnexo)),
+        ANEXO_FILAS_POR_HOJA
+      ).map((idx): [number, number] => [tabla60[idx[0]].mes, tabla60[idx[idx.length - 1]].mes])
+    : []
   const dataFinFinal = dataCajaDiv.map((row, idx) =>
     idx === dataCajaDiv.length - 1 ? { ...row, caja: row.caja + extraVentaM60 } : row
   )
@@ -708,6 +827,8 @@ export default function ModuloPDF() {
     if (!previewRef.current) return
     setGenerando(true)
     try {
+      // Captura con el reparto ya estable (fuentes cargadas y re-medidas).
+      await esperarLayoutEstable()
       const pageNodes = Array.from(
         previewRef.current.querySelectorAll<HTMLElement>('[data-pdf-page="true"]')
       )
@@ -787,6 +908,260 @@ export default function ModuloPDF() {
       setGenerando(false)
     }
   }
+
+  // Portada: encabezado (solo en la primera hoja) y tabla «Unidades cotizadas», que puede seguir en hojas «(cont.)».
+  const encabezadoPortada = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <BrektoIsotipo size={48} />
+          <div>
+            <div
+              style={{
+                fontFamily: 'Outfit, sans-serif',
+                fontWeight: 800,
+                fontSize: 22,
+                color: T.text,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <BrektoWordmark fontSize={22} />
+              <span>Inversiones</span>
+            </div>
+            <div style={{ fontSize: 11, color: T.muted }}>Proyección de resultado de Inversión Inmobiliaria</div>
+          </div>
+        </div>
+        {/* Esquina superior derecha: fecha + UF */}
+        <div style={{ textAlign: 'right', fontSize: 11, color: T.muted, lineHeight: 1.5, paddingTop: 4 }}>
+          <div>
+            {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </div>
+          <div style={{ fontWeight: 700, color: T.text }}>
+            1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+
+      <h1 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 800, fontSize: 28, color: T.text, marginBottom: 24 }}>
+        Propuesta de Inversión
+        <br />
+        <span style={{ color: T.accent }}>Inmobiliaria</span>
+      </h1>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
+        <div style={{ padding: '14px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          <div style={{ fontSize: 10, color: T.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            Asesor comercial
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>{asesor || '—'}</div>
+          {asesorMail && <div style={{ fontSize: 11, color: T.muted }}>{asesorMail}</div>}
+          {asesorTel && <div style={{ fontSize: 11, color: T.muted }}>{asesorTel}</div>}
+        </div>
+        <div style={{ padding: '14px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          <div style={{ fontSize: 10, color: T.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            Cliente / inversionista
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>
+            {global.inversionista_nombre || '—'}
+          </div>
+          {global.inversionista_rut && <div style={{ fontSize: 11, color: T.muted }}>RUT: {global.inversionista_rut}</div>}
+        </div>
+      </div>
+    </>
+  )
+  const tablaPortada = (titulo: string, filasTabla: typeof enPropuesta) => (
+    <>
+      {/* Sin margen superior: el bloque anterior ya deja 24 px (los Bloques no colapsan márgenes). */}
+      <div style={{ ...subTitleStyle, marginTop: 0 }}>{titulo}</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: T.accent }}>
+            <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cot.</th>
+            <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Proyecto</th>
+            <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Unidad</th>
+            <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipología</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filasTabla.map(({ c }) => (
+            <tr key={c.id}>
+              <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
+              <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>
+                {c.propiedad.proyecto_nombre}
+                <span style={{ color: T.muted, fontSize: 11 }}> · {c.propiedad.proyecto_comuna}</span>
+              </td>
+              <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>{c.propiedad.unidad_numero}</td>
+              <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>{c.propiedad.unidad_tipologia}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  )
+
+  const contenidoComparativa = (bloque: typeof enPropuesta, sufijo: string) => (
+    <>
+      <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
+        📊 Comparativa de Cotizaciones{sufijo}
+      </h2>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 14 }}>
+        <thead>
+          <tr style={{ background: T.accent }}>
+            {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].filter((h) => hayBonoPie || h !== 'Bono pie').map((h) => (
+              <th key={h} style={{ textAlign: 'left', padding: '6px 5px', color: '#ffffff', fontWeight: 700, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bloque.map(({ c, r }) => {
+            const contado = esCompraContado(c)
+            const pieEf = cotizacionEfectiva(c).pie
+            const bp = bonoPieUf(r.valor_escritura_uf, pieEf)
+            const pp = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pieEf)
+            return (
+              <tr key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <td style={{ padding: '5px', fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
+                <td style={{ padding: '5px' }}>
+                  <div style={{ fontWeight: 700 }}>{c.propiedad.proyecto_nombre}</div>
+                  <div style={{ fontSize: 8, color: T.muted }}>U. {c.propiedad.unidad_numero} · {c.propiedad.proyecto_comuna}</div>
+                </td>
+                <td style={{ padding: '5px' }}>{c.propiedad.unidad_tipologia}</td>
+                <td style={{ padding: '5px' }}>{c.propiedad.unidad_sup_total_m2}</td>
+                <td style={{ padding: '5px' }}>
+                  <div>{fmtUF(r.precio_compra_total_uf)}</div>
+                  <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.precio_compra_total_uf * uf)}</div>
+                </td>
+                <td style={{ padding: '5px' }}>{fmtUF(r.valor_tasacion_uf)}</td>
+                <td style={{ padding: '5px' }}>{fmtUF(r.valor_escritura_uf)}</td>
+                <td style={{ padding: '5px' }}>
+                  <div style={{ color: T.gold, fontWeight: 700 }}>{(pieEf.pie_pct * 100).toFixed(0)}%</div>
+                  <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(r.pie_total_uf)}</div>
+                </td>
+                {hayBonoPie && (
+                  <td style={{ padding: '5px' }}>
+                    {tieneBonoPie(pieEf) ? (
+                      <>
+                        <div>{(bonoPiePct(pieEf) * 100).toFixed(2)}%</div>
+                        <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(bp)}</div>
+                      </>
+                    ) : (
+                      <div>—</div>
+                    )}
+                  </td>
+                )}
+                <td style={{ padding: '5px' }}>
+                  <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(pp)}</div>
+                  <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(pp * uf)}</div>
+                </td>
+                <td style={{ padding: '5px' }}>
+                  {contado ? (
+                    <div style={{ color: T.gold, fontWeight: 700 }}>Contado</div>
+                  ) : (
+                    <>
+                      <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(r.hipotecario.dividendo_total_uf)}</div>
+                      <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.hipotecario.dividendo_total_clp)}</div>
+                    </>
+                  )}
+                </td>
+                <td style={{ padding: '5px', color: T.good }}>{(c.rentabilidad.plusvalia_anual_pct * 100).toFixed(1)}%</td>
+                <td style={{ padding: '5px', color: T.good }}>{(r.arriendo.cap_rate_anual_pct * 100).toFixed(2)}%</td>
+                <td style={{ padding: '5px', color: T.gold }}>{(r.arriendo.airbnb_cap_rate_anual_pct * 100).toFixed(2)}%</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </>
+  )
+  const tituloKpis = (sufijo: string) => (
+    <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
+      🎯 KPIs de la inversión{sufijo}
+    </h2>
+  )
+  const tarjetaKpi = ({ c, r }: (typeof enPropuesta)[number], medir?: string) => (
+    <div key={c.id} data-medir={medir} style={{ padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+      <div style={{ fontSize: 10, color: T.accent, marginBottom: 8, fontWeight: 700 }}>
+        Cotización {letraCotizacion(c.id)} — {c.propiedad.proyecto_nombre}
+      </div>
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Plusvalía proyectada 5 años</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.good }}>{fmtUF(r.plusvalia.precio_venta_5anos_uf)}</div>
+      </div>
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ganancia venta</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmtUF(r.plusvalia.ganancia_venta_uf)}</div>
+        <div style={{ fontSize: 10, color: T.muted }}>{fmtCLP(r.plusvalia.ganancia_venta_clp)}</div>
+      </div>
+      <div>
+        <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Resultado mensual arriendo</div>
+        {r.arriendo.tiene_ag ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_ag_clp >= 0 ? T.good : T.bad }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Con AG ({r.arriendo.ag_meses} meses) </span>
+              {fmtCLP(r.arriendo.diferencia_div_ag_clp)}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_mercado_clp >= 0 ? T.good : T.bad }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Mercado </span>
+              {fmtCLP(r.arriendo.diferencia_div_mercado_clp)}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad }}>
+            {fmtCLP(r.arriendo.resultado_mensual_clp)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+  const grillaKpis = (bloque: typeof enPropuesta, medir?: boolean) => (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${kpisColumnas}, 1fr)`, gap: KPIS_GAP_PX }}>
+      {bloque.map((par, i) => tarjetaKpi(par, medir ? `kpi-${i}` : undefined))}
+    </div>
+  )
+
+  // Anexo 60m: mismas cabeceras (60 meses completos) en cada hoja; cambian solo las filas mensuales.
+  const mesesEntregaArr = [
+    ...new Set(activas.map((c) => c.mes_entrega_flujo).filter((m): m is number => m != null)),
+  ].sort((a, b) => a - b)
+  const mesesIVAArr = [
+    ...new Set(
+      activas
+        .filter((c) => c.califica_iva && c.mes_entrega_flujo != null)
+        .map((c) => (c.mes_entrega_flujo as number) + 5)
+        .filter((m) => m >= 1 && m <= 60)
+    ),
+  ].sort((a, b) => a - b)
+  const resumenContextoComun = {
+    capitalInicialClp: diversificacion.diversif_capital_inicial_clp,
+    tasaMensualDecimal: diversificacion.diversif_tasa_mensual,
+    gastosOperacionalesClp: diversificacion.diversif_gastos_operacionales_clp,
+    amobladoOtrosClp: diversificacion.diversif_amoblado_otros_clp,
+    ahorroMensualClp: diversificacion.diversif_ahorro_mensual_clp,
+    ivaTotalReferenciaClp: diversificacion.diversif_iva_manual_override
+      ? diversificacion.diversif_iva_total_clp
+      : calcularIvaTotal(cotizaciones, uf),
+  }
+  const contenidoAnexo = (rango: [number, number], label: string) => (
+    <>
+      <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, fontWeight: 700, marginBottom: 4, color: T.accent }}>
+        📎 Anexo · Diversificación — {label}
+      </h2>
+      <TablaCashflow60m
+        tabla={tabla60}
+        mesesEntrega={mesesEntregaArr}
+        mesesIVA={mesesIVAArr}
+        resumenContexto={resumenContextoComun}
+        pdfMode
+        pdfLight
+        mesRango={rango}
+        omitResumenAnual
+      />
+    </>
+  )
 
   // ===== Render del SIDEBAR + PREVIEW =====
   return (
@@ -905,98 +1280,15 @@ export default function ModuloPDF() {
           alignItems: 'center',
         }}
       >
-        {/* HOJA 1 — Portada (portrait) */}
-        {secciones.has('portada') && (
-          <PdfPage orientation="portrait" label="Portada" innerPadding="20mm">
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 28 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <BrektoIsotipo size={48} />
-                <div>
-                  <div
-                    style={{
-                      fontFamily: 'Outfit, sans-serif',
-                      fontWeight: 800,
-                      fontSize: 22,
-                      color: T.text,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <BrektoWordmark fontSize={22} />
-                    <span>Inversiones</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: T.muted }}>Proyección de resultado de Inversión Inmobiliaria</div>
-                </div>
-              </div>
-              {/* Esquina superior derecha: fecha + UF */}
-              <div style={{ textAlign: 'right', fontSize: 11, color: T.muted, lineHeight: 1.5, paddingTop: 4 }}>
-                <div>
-                  {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                </div>
-                <div style={{ fontWeight: 700, color: T.text }}>
-                  1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-              </div>
-            </div>
-
-            <h1 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 800, fontSize: 28, color: T.text, marginBottom: 24 }}>
-              Propuesta de Inversión
-              <br />
-              <span style={{ color: T.accent }}>Inmobiliaria</span>
-            </h1>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
-              <div style={{ padding: '14px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-                <div style={{ fontSize: 10, color: T.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-                  Asesor comercial
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>{asesor || '—'}</div>
-                {asesorMail && <div style={{ fontSize: 11, color: T.muted }}>{asesorMail}</div>}
-                {asesorTel && <div style={{ fontSize: 11, color: T.muted }}>{asesorTel}</div>}
-              </div>
-              <div style={{ padding: '14px 16px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-                <div style={{ fontSize: 10, color: T.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-                  Cliente / inversionista
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>
-                  {global.inversionista_nombre || '—'}
-                </div>
-                {global.inversionista_rut && <div style={{ fontSize: 11, color: T.muted }}>RUT: {global.inversionista_rut}</div>}
-              </div>
-            </div>
-
-            {enPropuesta.length > 0 && (
-              <>
-                <div style={{ ...subTitleStyle, marginTop: 8 }}>Unidades cotizadas</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: T.accent }}>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cot.</th>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Proyecto</th>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Unidad</th>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', color: '#ffffff', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipología</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {enPropuesta.map(({ c }) => (
-                      <tr key={c.id}>
-                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>
-                          {c.propiedad.proyecto_nombre}
-                          <span style={{ color: T.muted, fontSize: 11 }}> · {c.propiedad.proyecto_comuna}</span>
-                        </td>
-                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>{c.propiedad.unidad_numero}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border}` }}>{c.propiedad.unidad_tipologia}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
+        {/* HOJA 1 — Portada (portrait). Si las unidades no caben, siguen en hojas «(cont.)». */}
+        {secciones.has('portada') && hojasPortada.map((hoja, k) => (
+          <PdfPage key={`portada-${k}`} orientation="portrait" label={k === 0 ? 'Portada' : `Portada (cont. ${k})`} innerPadding={`${PAD_PORTADA_MM}mm`}>
+            {hoja.conEncabezado && <Bloque>{encabezadoPortada}</Bloque>}
+            {hoja.filas.length > 0 && (
+              <Bloque>{tablaPortada(k === 0 ? 'Unidades cotizadas' : 'Unidades cotizadas (cont.)', hoja.filas)}</Bloque>
             )}
-
           </PdfPage>
-        )}
+        ))}
 
         {/* HOJA 2 — Comparativa de cotizaciones: solo la tabla (landscape) */}
         {secciones.has('resumen') && enPropuesta.length > 0 && bloquesComparativa.map((bloque, b) => (
@@ -1004,80 +1296,11 @@ export default function ModuloPDF() {
             key={`comparativa-${b}`}
             orientation="landscape"
             label={bloquesComparativa.length > 1 ? `Comparativa ${b + 1}/${bloquesComparativa.length}` : 'Comparativa'}
-            innerPadding="10mm"
+            innerPadding={`${PAD_LANDSCAPE_MM}mm`}
           >
-            <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              📊 Comparativa de Cotizaciones{bloquesComparativa.length > 1 ? ` (${b + 1} de ${bloquesComparativa.length})` : ''}
-            </h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, marginBottom: 14 }}>
-              <thead>
-                <tr style={{ background: T.accent }}>
-                  {['Cot.', 'Proyecto / Unidad', 'Tipología', 'm²', 'Precio compra (UF)', 'Tasación', 'Escrituración', 'Pie doc.', 'Bono pie', 'Pie a pagar', 'Dividendo', 'Plusvalía', 'Cap rate', 'Cap rate AirBnB'].filter((h) => hayBonoPie || h !== 'Bono pie').map((h) => (
-                    <th key={h} style={{ textAlign: 'left', padding: '6px 5px', color: '#ffffff', fontWeight: 700, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {bloque.map(({ c, r }) => {
-                  const contado = esCompraContado(c)
-                  const pieEf = cotizacionEfectiva(c).pie
-                  const bp = bonoPieUf(r.valor_escritura_uf, pieEf)
-                  const pp = pieAPagarUf(r.pie_total_uf, r.valor_escritura_uf, pieEf)
-                  return (
-                    <tr key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
-                      <td style={{ padding: '5px', fontWeight: 700, color: T.gold }}>{letraCotizacion(c.id)}</td>
-                      <td style={{ padding: '5px' }}>
-                        <div style={{ fontWeight: 700 }}>{c.propiedad.proyecto_nombre}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>U. {c.propiedad.unidad_numero} · {c.propiedad.proyecto_comuna}</div>
-                      </td>
-                      <td style={{ padding: '5px' }}>{c.propiedad.unidad_tipologia}</td>
-                      <td style={{ padding: '5px' }}>{c.propiedad.unidad_sup_total_m2}</td>
-                      <td style={{ padding: '5px' }}>
-                        <div>{fmtUF(r.precio_compra_total_uf)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.precio_compra_total_uf * uf)}</div>
-                      </td>
-                      <td style={{ padding: '5px' }}>{fmtUF(r.valor_tasacion_uf)}</td>
-                      <td style={{ padding: '5px' }}>{fmtUF(r.valor_escritura_uf)}</td>
-                      <td style={{ padding: '5px' }}>
-                        <div style={{ color: T.gold, fontWeight: 700 }}>{(pieEf.pie_pct * 100).toFixed(0)}%</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(r.pie_total_uf)}</div>
-                      </td>
-                      {hayBonoPie && (
-                        <td style={{ padding: '5px' }}>
-                          {tieneBonoPie(pieEf) ? (
-                            <>
-                              <div>{(bonoPiePct(pieEf) * 100).toFixed(2)}%</div>
-                              <div style={{ fontSize: 8, color: T.muted }}>{fmtUF(bp)}</div>
-                            </>
-                          ) : (
-                            <div>—</div>
-                          )}
-                        </td>
-                      )}
-                      <td style={{ padding: '5px' }}>
-                        <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(pp)}</div>
-                        <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(pp * uf)}</div>
-                      </td>
-                      <td style={{ padding: '5px' }}>
-                        {contado ? (
-                          <div style={{ color: T.gold, fontWeight: 700 }}>Contado</div>
-                        ) : (
-                          <>
-                            <div style={{ color: T.gold, fontWeight: 700 }}>{fmtUF(r.hipotecario.dividendo_total_uf)}</div>
-                            <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.hipotecario.dividendo_total_clp)}</div>
-                          </>
-                        )}
-                      </td>
-                      <td style={{ padding: '5px', color: T.good }}>{(c.rentabilidad.plusvalia_anual_pct * 100).toFixed(1)}%</td>
-                      <td style={{ padding: '5px', color: T.good }}>{(r.arriendo.cap_rate_anual_pct * 100).toFixed(2)}%</td>
-                      <td style={{ padding: '5px', color: T.gold }}>{(r.arriendo.airbnb_cap_rate_anual_pct * 100).toFixed(2)}%</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <Bloque>
+              {contenidoComparativa(bloque, bloquesComparativa.length > 1 ? ` (${b + 1} de ${bloquesComparativa.length})` : '')}
+            </Bloque>
           </PdfPage>
         ))}
 
@@ -1087,56 +1310,16 @@ export default function ModuloPDF() {
             key={`kpis-${b}`}
             orientation="landscape"
             label={bloquesKpis.length > 1 ? `KPIs ${b + 1}/${bloquesKpis.length}` : 'KPIs'}
-            innerPadding="10mm"
+            innerPadding={`${PAD_LANDSCAPE_MM}mm`}
           >
-            <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 8, color: T.accent }}>
-              🎯 KPIs de la inversión{bloquesKpis.length > 1 ? ` (${b + 1} de ${bloquesKpis.length})` : ''}
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(bloque.length, KPIS_COLUMNAS)}, 1fr)`, gap: 10 }}>
-              {bloque.map(({ c, r }) => {
-                return (
-                  <div key={c.id} style={{ padding: '10px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-                    <div style={{ fontSize: 10, color: T.accent, marginBottom: 8, fontWeight: 700 }}>
-                      Cotización {letraCotizacion(c.id)} — {c.propiedad.proyecto_nombre}
-                    </div>
-                    <div style={{ marginBottom: 6 }}>
-                      <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Plusvalía proyectada 5 años</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.good }}>{fmtUF(r.plusvalia.precio_venta_5anos_uf)}</div>
-                    </div>
-                    <div style={{ marginBottom: 6 }}>
-                      <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ganancia venta</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmtUF(r.plusvalia.ganancia_venta_uf)}</div>
-                      <div style={{ fontSize: 10, color: T.muted }}>{fmtCLP(r.plusvalia.ganancia_venta_clp)}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Resultado mensual arriendo</div>
-                      {r.arriendo.tiene_ag ? (
-                        <>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_ag_clp >= 0 ? T.good : T.bad }}>
-                            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Con AG ({r.arriendo.ag_meses} meses) </span>
-                            {fmtCLP(r.arriendo.diferencia_div_ag_clp)}
-                          </div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.diferencia_div_mercado_clp >= 0 ? T.good : T.bad }}>
-                            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>Mercado </span>
-                            {fmtCLP(r.arriendo.diferencia_div_mercado_clp)}
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ fontSize: 13, fontWeight: 700, color: r.arriendo.resultado_mensual_clp >= 0 ? T.good : T.bad }}>
-                          {fmtCLP(r.arriendo.resultado_mensual_clp)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <Bloque>{tituloKpis(bloquesKpis.length > 1 ? ` (${b + 1} de ${bloquesKpis.length})` : '')}</Bloque>
+            {grillaKpis(bloque)}
           </PdfPage>
         ))}
 
         {/* HOJA 4 — Gráficos + Tabla resumen anual (landscape) */}
         {secciones.has('flujo') && activas.length > 0 && tabla60.length > 0 && (
-          <PdfPage orientation="landscape" label="Gráficos" innerPadding="10mm">
+          <PdfPage orientation="landscape" label="Gráficos" innerPadding={`${PAD_LANDSCAPE_MM}mm`}>
             <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 700, marginBottom: 6, color: T.accent }}>
               📈 Proyección — gráficos y resumen anual
             </h2>
@@ -1217,79 +1400,85 @@ export default function ModuloPDF() {
           </PdfPage>
         )}
 
-        {/* HOJAS 5+ — por cada cotización activa: 2 hojas portrait (Resumen general + A–C en la primera; D–F + Política en la segunda) */}
-        {activas.map((c) => {
-          const letra = letraCotizacion(c.id)
-          if (!secciones.has(`cot${letra}`)) return null
-          const r = calcularResultadosCotizacion(c, uf)
+        {/* HOJAS 5+ — por cada cotización: primera parte (Resumen general + A–C) y segunda parte (D–F + Política),
+            cada una repartida por alturas medidas. La segunda parte siempre empieza en hoja nueva. */}
+        {cotsEnPdf.map(({ c, letra, hoja1, hoja2 }) => {
+          // La banda va en todas las hojas: se descuenta del alto útil.
+          const disponible = altoUtilPx('portrait', PAD_COT_MM) - alto(`cot${letra}-banda`)
+          const repartir = (secs: Seccion[], compacta: boolean) =>
+            repartirEnHojas(secs.map((sec) => alto(`cot${letra}-${sec.id}`)), disponible)
+              .map((idx) => ({ secs: idx.map((i) => secs[i]), compacta }))
+          const hojas = [...repartir(hoja1, false), ...repartir(hoja2, true)]
           return (
             <div key={`cot-${letra}-wrapper`} style={{ display: 'contents' }}>
-              <PdfPage orientation="portrait" label={`Cotización ${letra} · Hoja 1`} innerPadding="14mm">
-                {renderBloqueAE(c, letra, r, uf, global)}
-              </PdfPage>
-              <PdfPage orientation="portrait" label={`Cotización ${letra} · Hoja 2`} innerPadding="14mm">
-                <CompactaCtx.Provider value>
-                  {renderBloqueFG(c, letra, r, uf, global, cotizaciones, diversificacion)}
-                </CompactaCtx.Provider>
-              </PdfPage>
+              {hojas.map((hoja, n) => (
+                <PdfPage key={`cot-${letra}-${n}`} orientation="portrait" label={`Cotización ${letra} · Hoja ${n + 1}`} innerPadding={`${PAD_COT_MM}mm`}>
+                  <CompactaCtx.Provider value={hoja.compacta}>
+                    <Bloque>
+                      <CotBandaSuperior c={c} letra={letra} hojaLabel={`Hoja ${n + 1} de ${hojas.length}`} uf={uf} />
+                    </Bloque>
+                    {hoja.secs.map((sec) => <Bloque key={sec.id}>{sec.node}</Bloque>)}
+                  </CompactaCtx.Provider>
+                </PdfPage>
+              ))}
             </div>
           )
         })}
 
-        {/* ANEXO opcional 60m — partido en TRES hojas landscape:
-            Hoja A: meses 1–24 · Hoja B: meses 25–48 · Hoja C: meses 49–60.
-            Header compactado para que la última fila de cada hoja quepa limpia dentro del overflow:hidden.
-            Las tarjetas de cabecera siguen consolidando los 60 meses completos en las tres hojas. */}
-        {anexoTabla60m && activas.length > 0 && tabla60.length > 0 && (() => {
-          const mesesEntregaArr = [
-            ...new Set(activas.map((c) => c.mes_entrega_flujo).filter((m): m is number => m != null)),
-          ].sort((a, b) => a - b)
-          const mesesIVAArr = [
-            ...new Set(
-              activas
-                .filter((c) => c.califica_iva && c.mes_entrega_flujo != null)
-                .map((c) => (c.mes_entrega_flujo as number) + 5)
-                .filter((m) => m >= 1 && m <= 60)
-            ),
-          ].sort((a, b) => a - b)
-          const resumenContextoComun = {
-            capitalInicialClp: diversificacion.diversif_capital_inicial_clp,
-            tasaMensualDecimal: diversificacion.diversif_tasa_mensual,
-            gastosOperacionalesClp: diversificacion.diversif_gastos_operacionales_clp,
-            amobladoOtrosClp: diversificacion.diversif_amoblado_otros_clp,
-            ahorroMensualClp: diversificacion.diversif_ahorro_mensual_clp,
-            ivaTotalReferenciaClp: diversificacion.diversif_iva_manual_override
-              ? diversificacion.diversif_iva_total_clp
-              : calcularIvaTotal(cotizaciones, uf),
-          }
-          const tramos: Array<{ rango: [number, number]; label: string }> = [
-            { rango: [1, 24], label: 'meses 1–24 (Hoja 1 de 3 · cabeceras 60 m completos)' },
-            { rango: [25, 48], label: 'meses 25–48 (Hoja 2 de 3 · cabeceras 60 m completos)' },
-            { rango: [49, 60], label: 'meses 49–60 (Hoja 3 de 3 · cabeceras 60 m completos)' },
-          ]
+        {/* ANEXO opcional 60m — hojas landscape de hasta 24 meses, repartidas por alto medido.
+            Las tarjetas de cabecera consolidan los 60 meses completos en todas las hojas. */}
+        {hojasAnexo.map((rango, n) => (
+          <PdfPage key={`anexo-${rango[0]}-${rango[1]}`} orientation="landscape" label={`Anexo ${rango[0]}–${rango[1]}`} innerPadding={`${PAD_ANEXO_MM}mm`}>
+            <Bloque>
+              {contenidoAnexo(rango, `meses ${rango[0]}–${rango[1]} (Hoja ${n + 1} de ${hojasAnexo.length} · cabeceras 60 m completos)`)}
+            </Bloque>
+          </PdfPage>
+        ))}
 
-          return (
-            <>
-              {tramos.map(({ rango, label }) => (
-                <PdfPage key={`anexo-${rango[0]}-${rango[1]}`} orientation="landscape" label={`Anexo ${rango[0]}–${rango[1]}`} innerPadding="6mm">
-                  <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, fontWeight: 700, marginBottom: 4, color: T.accent }}>
-                    📎 Anexo · Diversificación — {label}
-                  </h2>
-                  <TablaCashflow60m
-                    tabla={tabla60}
-                    mesesEntrega={mesesEntregaArr}
-                    mesesIVA={mesesIVAArr}
-                    resumenContexto={resumenContextoComun}
-                    pdfMode
-                    pdfLight
-                    mesRango={rango}
-                    omitResumenAnual
-                  />
-                </PdfPage>
-              ))}
-            </>
-          )
-        })()}
+        {/* MEDICIÓN (B-10) — fuera de vista, con el ancho de contenido de cada hoja. Nada de aquí sale en el PDF. */}
+        <div ref={medicionRef} data-pdf-medicion aria-hidden style={{ ...MEDICION_STYLE, fontFamily: 'Inter, sans-serif', color: T.text }}>
+          {secciones.has('portada') && (
+            <div style={{ width: anchoUtilPx('portrait', PAD_PORTADA_MM) }}>
+              <Bloque medir="portada-enc">{encabezadoPortada}</Bloque>
+              {enPropuesta.length > 0 && (
+                <Bloque medir="portada-tabla" filas="portada-tabla">{tablaPortada('Unidades cotizadas', enPropuesta)}</Bloque>
+              )}
+            </div>
+          )}
+          {enPropuesta.length > 0 && (
+            <div style={{ width: anchoUtilPx('landscape', PAD_LANDSCAPE_MM) }}>
+              {secciones.has('resumen') && (
+                <Bloque medir="comparativa" filas="comparativa">{contenidoComparativa(enPropuesta, '')}</Bloque>
+              )}
+              {secciones.has('kpis') && (
+                <>
+                  <Bloque medir="kpis-titulo">{tituloKpis('')}</Bloque>
+                  {grillaKpis(enPropuesta, true)}
+                </>
+              )}
+            </div>
+          )}
+          <div style={{ width: anchoUtilPx('portrait', PAD_COT_MM) }}>
+            {cotsEnPdf.map(({ c, letra, hoja1, hoja2 }) => (
+              <div key={letra}>
+                <Bloque medir={`cot${letra}-banda`}>
+                  <CotBandaSuperior c={c} letra={letra} hojaLabel="" uf={uf} />
+                </Bloque>
+                {hoja1.map((sec) => <Bloque key={sec.id} medir={`cot${letra}-${sec.id}`}>{sec.node}</Bloque>)}
+                <CompactaCtx.Provider value>
+                  {hoja2.map((sec) => <Bloque key={sec.id} medir={`cot${letra}-${sec.id}`}>{sec.node}</Bloque>)}
+                </CompactaCtx.Provider>
+              </div>
+            ))}
+          </div>
+          {anexoVisible && (
+            <div style={{ width: anchoUtilPx('landscape', PAD_ANEXO_MM) }}>
+              <Bloque medir="anexo" filas="anexo">
+                {contenidoAnexo([1, 60], 'meses 1–60 (Hoja 1 de 1 · cabeceras 60 m completos)')}
+              </Bloque>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
