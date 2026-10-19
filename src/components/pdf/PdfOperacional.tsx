@@ -1,7 +1,7 @@
 /**
  * PDF Operacional / UGC / Jira — exportable de uso interno.
  *
- * Una hoja Letter portrait por cotización individual, descarga directa
+ * Una hoja Letter portrait por cotización individual (una 2ª si no cabe, B-10), descarga directa
  * (sin preview en pantalla). Renderiza off-screen vía createRoot, captura
  * con html2canvas, descarga con jsPDF y desmonta.
  *
@@ -17,9 +17,15 @@ import html2canvas from 'html2canvas'
 import type { Cotizacion, DatosGlobales, ResultadosCotizacion } from '@/types'
 import { calcularResultadosCotizacion } from '@/lib/engines/calculosCotizacion'
 import { calcularMontosDesglosePieClp } from '@/lib/engines/calculosPie'
-import { bonoPieUf, pieAPagarUf } from '@/lib/engines/desglosePieUf'
+import { devolucionIvaCotizacionClp } from '@/lib/engines/calculosDiversificacion'
+import { bonoPiePct, bonoPieUf, pieAPagarUf, tieneBonoPie } from '@/lib/engines/desglosePieUf'
+import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado'
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
+import { letraCotizacion } from '@/lib/cotizaciones'
+import { useAppStore } from '@/store/useAppStore'
+import { repartirEnHojas } from './repartirEnHojas'
+import { Bloque, useAlturas, esperarLayoutEstable, MEDICION_STYLE } from './useAlturas'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -34,6 +40,10 @@ const T = {
 
 const PAGE_PORTRAIT_MM = { w: 215.9, h: 279.4 }
 const MM_TO_PX = 96 / 25.4 // ~3.78
+const PAD_V_MM = 11
+const PAD_H_MM = 12
+/** Holgura que se deja libre al fondo de cada hoja (px). */
+const MARGEN_SEGURIDAD_PX = 4
 
 // ----- Helpers visuales (paleta clara, compactos) -----
 
@@ -80,12 +90,16 @@ interface SheetProps {
   letraCotizacion: string
 }
 
-function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, letraCotizacion }: SheetProps) {
+function PdfOperacionalHojas({ cot, global, inmobiliariaNombre, proyectoNombre, letraCotizacion }: SheetProps) {
+  const { ref: medicionRef, alto } = useAlturas()
   const uf = global.uf_valor_clp
   const r: ResultadosCotizacion = calcularResultadosCotizacion(cot, uf)
-  const propiedad = cot.propiedad
-  const pie = cot.pie
-  const hip = cot.hipotecario
+  // B-04: se muestra la cotización efectiva (en contado: sin BI, pie 100 % upfront, crédito 0 %).
+  const contado = esCompraContado(cot)
+  const ce = cotizacionEfectiva(cot)
+  const propiedad = ce.propiedad
+  const pie = ce.pie
+  const hip = ce.hipotecario
 
   // Cálculos derivados — algunos no tienen helper directo en motor
   const pcDeptoUf = precioCompraDeptoUf(propiedad)
@@ -98,9 +112,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const beneficioUf = r.beneficio_inmobiliario_uf  // BI sobre tasación (depto)
   // SUBTOTAL = depto post-descuentos + adicionales (sin BI). Igual a precio_compra_total_uf por construcción.
   const subtotalUf = r.precio_compra_total_uf
-  // BONIFICACIÓN AL PIE (B) = delta entre subtotal y valor escrituración. Por construcción del motor:
+  // BONIFICACIÓN INMOBILIARIA (BI) = delta entre subtotal y valor escrituración. Por construcción del motor:
   // valor_escritura - precio_compra_total = beneficio inmobiliario sobre la base (con/sin BI repercutido en adicionales).
-  const bonificacionAlPieUf = r.valor_escritura_uf - r.precio_compra_total_uf
+  // No confundir con el bono pie (sección C.1).
+  const bonificacionInmobiliariaUf = r.valor_escritura_uf - r.precio_compra_total_uf
   const valorFinalUf = r.valor_escritura_uf
 
   const bonoPie = bonoPieUf(r.valor_escritura_uf, pie)
@@ -110,6 +125,10 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
   const tieneBod = propiedad.bodega_uf > 0
   const promociones = leyendaPromociones(cot)
   const cuotonTotalClp = desg.monto_cuoton_clp * Math.max(pie.cuoton_n_cuotas, 1) // monto total tramo cuotón
+  // Devolución de IVA de esta unidad, la misma del flujo 60m. Se lee del store (no de los args del
+  // exporter) para no tocar su firma; el prorrateo manual necesita todas las cotizaciones.
+  const { cotizaciones, diversificacion } = useAppStore.getState()
+  const ivaClp = devolucionIvaCotizacionClp(cot, cotizaciones, diversificacion, uf)
 
   const headerColStyle: React.CSSProperties = {
     fontSize: 10,
@@ -125,39 +144,14 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
     marginBottom: 2,
   }
 
-  return (
-    <div
-      data-pdf-page="true"
-      style={{
-        width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
-        height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
-        background: '#ffffff',
-        color: T.text,
-        boxSizing: 'border-box',
-        padding: '11mm 12mm',
-        overflow: 'hidden',
-        fontFamily: 'Inter, Helvetica, Arial, sans-serif',
-        position: 'relative',
-      }}
-    >
-      {/* Fecha + UF — esquina superior DERECHA absoluta, sobre el header */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '11mm',
-          right: '12mm',
-          textAlign: 'right',
-          fontSize: 9,
-          color: T.muted,
-          lineHeight: 1.4,
-        }}
-      >
-        <div>{new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-        <div style={{ fontWeight: 700, color: T.text }}>
-          1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </div>
-      </div>
-
+  // Encabezado completo (1ª hoja) y mínimo (hojas siguientes): solo el badge con «Hoja N de M».
+  const badge = (hojaTxt: string) => (
+    <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
+      COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC{contado ? ' · COMPRA CONTADO' : ''}{hojaTxt}
+    </div>
+  )
+  const encabezado = (hojaTxt: string) => (
+    <>
       {/* HEADER: 2 columnas — Asesor (izq) / Cliente (der) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, paddingBottom: 6, paddingRight: 80, borderBottom: `1px solid ${T.border}` }}>
         <div style={headerColStyle}>
@@ -182,10 +176,12 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
       </div>
 
       {/* Badge de uso interno */}
-      <div style={{ display: 'inline-block', padding: '2px 8px', background: T.accent, color: '#fff', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 4 }}>
-        COTIZACIÓN {letraCotizacion} · USO INTERNO JIRA / OPERACIONES / UGC
-      </div>
+      {badge(hojaTxt)}
+    </>
+  )
 
+  const seccionA = (
+    <>
       {/* A. Antecedentes de la propiedad */}
       <SubTitle>A · Antecedentes de la propiedad</SubTitle>
       <Grid cols={4}>
@@ -194,10 +190,13 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
         <StatBox label="Sup. total" value={`${propiedad.unidad_sup_total_m2} m²`} sub={`int ${propiedad.unidad_sup_interior_m2} / terr ${propiedad.unidad_sup_terraza_m2}`} />
         <StatBox label="Orientación" value={propiedad.unidad_orientacion || '—'} sub={`Entrega: ${propiedad.unidad_entrega || '—'}`} />
       </Grid>
-
+    </>
+  )
+  const seccionB = (
+    <>
       {/* B. Detalle precios y descuentos — flujo izq→der: Lista → (−Descuentos) → SUBTOTAL → (+Bonif al pie) → VALOR FINAL */}
       <SubTitle>B · Detalle precios y descuentos</SubTitle>
-      <Grid cols={6}>
+      <Grid cols={contado ? 5 : 6}>
         <StatBox label="Precio lista" value={fmtUF(propiedad.precio_lista_uf)} sub={fmtCLP(propiedad.precio_lista_uf * uf)} />
         <StatBox label={`Descuento (${pctDescuento.toFixed(2)}%)`} value={fmtUF(descuentoTotalUf)} sub={fmtCLP(descuentoTotalUf * uf)} />
         <StatBox label={`Desc. por Bono (${(bonoMaxPct * 100).toFixed(2)}%)`} value={fmtUF(descuentoBonoUf)} sub={fmtCLP(descuentoBonoUf * uf)} />
@@ -209,21 +208,41 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
             `Depto ${fmtUF(pcDeptoUf)}${tieneEst ? ` · Est ${fmtUF(propiedad.estacionamiento_uf)}` : ''}${tieneBod ? ` · Bod ${fmtUF(propiedad.bodega_uf)}` : ''}`,
           ].join(' · ')}
         />
-        <StatBox label="Bonificación al pie" value={fmtUF(bonificacionAlPieUf)} sub={fmtCLP(bonificacionAlPieUf * uf)} />
+        {!contado && (
+          <StatBox
+            label={`Bonificación inmobiliaria (BI ${(propiedad.bono_descuento_pct * 100).toFixed(2)}%)`}
+            value={fmtUF(bonificacionInmobiliariaUf)}
+            sub={fmtCLP(bonificacionInmobiliariaUf * uf)}
+          />
+        )}
         <StatBox label="VALOR FINAL" value={fmtUF(valorFinalUf)} sub={fmtCLP(valorFinalUf * uf)} valueColor={T.accent} />
       </Grid>
-
+    </>
+  )
+  const seccionC1 = (
+    <>
       {/* C.1 Pie a documentar (referencia, antes del desglose) */}
       <SubTitle>C.1 · Pie y forma de pago</SubTitle>
-      <Grid cols={1}>
+      <Grid cols={tieneBonoPie(pie) ? 2 : 1}>
         <StatBox
-          label={`Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          label={contado ? 'Pago contado (100 %) · pago único' : `Pie a documentar (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
+          valueColor={contado ? T.accent : undefined}
         />
+        {tieneBonoPie(pie) && (
+          <StatBox
+            label={`Bono pie (${(bonoPiePct(pie) * 100).toFixed(2)}% s/ escrituración)`}
+            value={fmtUF(bonoPie)}
+            sub={fmtCLP(bonoPie * uf)}
+          />
+        )}
       </Grid>
-
-      {/* C.2 Pie a pagar + desglose horizontal de cuotas */}
+    </>
+  )
+  const seccionC2 = (
+    <>
+      {/* C.2 Pie a pagar + desglose horizontal de cuotas (no aplica en compra contado) */}
       <SubTitle>C.2 · Desglose de pago pie restante</SubTitle>
       <Grid cols={1}>
         <StatBox
@@ -258,10 +277,13 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           }
         />
       </Grid>
-
+    </>
+  )
+  const seccionD = (
+    <>
       {/* D. Resumen financiero — UF en bold, $ en gris */}
       <SubTitle>D · Resumen financiero</SubTitle>
-      <Grid cols={3}>
+      <Grid cols={4}>
         <StatBox
           label="VALOR ESCRITURACIÓN (100%)"
           value={fmtUF(r.valor_escritura_uf)}
@@ -269,18 +291,30 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
           valueColor={T.accent}
         />
         <StatBox
-          label={`PIE A DOCUMENTAR (${(pie.pie_pct * 100).toFixed(2)}%)`}
+          label={contado ? 'PAGO CONTADO (100%)' : `PIE A DOCUMENTAR (${(pie.pie_pct * 100).toFixed(2)}%)`}
           value={fmtUF(r.pie_total_uf)}
           sub={fmtCLP(r.pie_total_clp)}
         />
+        {contado ? (
+          <StatBox label="COMPRA CONTADO" value="Sin crédito" sub="Sin crédito hipotecario ni dividendo" valueColor={T.accent} />
+        ) : (
+          <StatBox
+            label={`MONTO DE CRÉDITO (${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}%)`}
+            value={fmtUF(r.hipotecario.monto_credito_uf)}
+            sub={fmtCLP(r.hipotecario.monto_credito_clp)}
+            valueColor={T.accent}
+          />
+        )}
         <StatBox
-          label={`MONTO DE CRÉDITO (${(hip.hipotecario_aprobacion_pct * 100).toFixed(2)}%)`}
-          value={fmtUF(r.hipotecario.monto_credito_uf)}
-          sub={fmtCLP(r.hipotecario.monto_credito_clp)}
-          valueColor={T.accent}
+          label={diversificacion.diversif_iva_manual_override ? 'DEVOLUCIÓN DE IVA (MANUAL)' : 'DEVOLUCIÓN DE IVA'}
+          value={ivaClp == null ? 'No aplica' : uf > 0 ? fmtUF(ivaClp / uf) : '—'}
+          sub={ivaClp == null ? undefined : fmtCLP(ivaClp)}
         />
       </Grid>
-
+    </>
+  )
+  const seccionE = (
+    <>
       {/* E. Promociones */}
       <SubTitle>E · Promociones de la cotización</SubTitle>
       {promociones.length > 0 ? (
@@ -292,7 +326,90 @@ function PdfOperacionalSheet({ cot, global, inmobiliariaNombre, proyectoNombre, 
       ) : (
         <div style={{ fontSize: 10, color: T.muted, fontStyle: 'italic' }}>Sin promociones aplicables.</div>
       )}
-    </div>
+    </>
+  )
+
+  const secciones = [
+    { id: 'a', node: seccionA },
+    { id: 'b', node: seccionB },
+    { id: 'c1', node: seccionC1 },
+    // C.2 no aplica en compra contado
+    ...(contado ? [] : [{ id: 'c2', node: seccionC2 }]),
+    { id: 'd', node: seccionD },
+    { id: 'e', node: seccionE },
+  ]
+
+  // Reparto (B-10). Toda hoja lleva al menos el encabezado mínimo; la 1ª suma la diferencia con el
+  // completo, que va como primer ítem para que quede siempre en ella. En el caso normal: 1 hoja.
+  const altoUtil = PAGE_PORTRAIT_MM.h * MM_TO_PX - 2 * PAD_V_MM * MM_TO_PX - MARGEN_SEGURIDAD_PX
+  const hojas = repartirEnHojas(
+    [alto('enc') - alto('enc-min'), ...secciones.map((sec) => alto(sec.id))],
+    altoUtil - alto('enc-min')
+  ).map((idx) => idx.filter((i) => i > 0).map((i) => secciones[i - 1]))
+  const hojaTxt = (n: number) => (hojas.length > 1 ? ` · HOJA ${n + 1} DE ${hojas.length}` : '')
+
+  const pageStyle: React.CSSProperties = {
+    width: `${PAGE_PORTRAIT_MM.w * MM_TO_PX}px`,
+    height: `${PAGE_PORTRAIT_MM.h * MM_TO_PX}px`,
+    background: '#ffffff',
+    color: T.text,
+    boxSizing: 'border-box',
+    padding: `${PAD_V_MM}mm ${PAD_H_MM}mm`,
+    overflow: 'hidden',
+    fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+    position: 'relative',
+  }
+
+  return (
+    <>
+      {hojas.map((secs, n) => (
+        <div
+          key={n}
+          data-pdf-page="true"
+          data-pdf-label={n === 0 ? `Operacional Cotización ${letraCotizacion}` : `Operacional Cotización ${letraCotizacion} · Hoja ${n + 1}`}
+          style={pageStyle}
+        >
+          {n === 0 ? (
+            <>
+              {/* Fecha + UF — esquina superior DERECHA absoluta, sobre el header */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '11mm',
+                  right: '12mm',
+                  textAlign: 'right',
+                  fontSize: 9,
+                  color: T.muted,
+                  lineHeight: 1.4,
+                }}
+              >
+                <div>{new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                <div style={{ fontWeight: 700, color: T.text }}>
+                  1 UF = ${uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+
+              <Bloque>{encabezado(hojaTxt(n))}</Bloque>
+            </>
+          ) : (
+            <Bloque>{badge(hojaTxt(n))}</Bloque>
+          )}
+          {secs.map((sec) => <Bloque key={sec.id}>{sec.node}</Bloque>)}
+        </div>
+      ))}
+
+      {/* MEDICIÓN (B-10) — fuera de vista, mismo ancho de contenido y tipografía que la hoja. */}
+      <div
+        ref={medicionRef}
+        data-pdf-medicion
+        aria-hidden
+        style={{ ...MEDICION_STYLE, width: PAGE_PORTRAIT_MM.w * MM_TO_PX - 2 * PAD_H_MM * MM_TO_PX, fontFamily: pageStyle.fontFamily, color: T.text }}
+      >
+        <Bloque medir="enc">{encabezado('')}</Bloque>
+        <Bloque medir="enc-min">{badge('')}</Bloque>
+        {secciones.map((sec) => <Bloque key={sec.id} medir={sec.id}>{sec.node}</Bloque>)}
+      </div>
+    </>
   )
 }
 
@@ -340,7 +457,7 @@ interface ExportarArgs {
  * Renderiza off-screen vía createRoot, captura con html2canvas, comprime y descarga.
  */
 export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, proyectoNombre }: ExportarArgs): Promise<void> {
-  const letra = String.fromCharCode(65 + cot.id)
+  const letra = letraCotizacion(cot.id)
 
   // Container off-screen
   const container = document.createElement('div')
@@ -350,7 +467,7 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
 
   try {
     root.render(
-      <PdfOperacionalSheet
+      <PdfOperacionalHojas
         cot={cot}
         global={global}
         inmobiliariaNombre={inmobiliariaNombre}
@@ -359,25 +476,38 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
       />
     )
 
-    // Esperar 2 frames para que React monte y los layouts se estabilicen
+    // Esperar 2 frames para que React monte; luego fuentes + 2 frames para que el reparto (B-10) quede estable
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     )
+    await esperarLayoutEstable()
     // Pequeño extra para que la imagen del isotipo termine de cargar (opcional, en clones rápidos suele estar lista)
     await new Promise((r) => setTimeout(r, 80))
 
-    const node = container.querySelector<HTMLElement>('[data-pdf-page="true"]')
-    if (!node) throw new Error('No se encontró el nodo de la hoja operacional')
+    const nodes = Array.from(container.querySelectorAll<HTMLElement>('[data-pdf-page="true"]'))
+    if (nodes.length === 0) throw new Error('No se encontró el nodo de la hoja operacional')
+
+    // Guardia anti-corte: la hoja tiene overflow hidden; lo que no cabe no sale en el PDF.
+    const cortada = nodes.find((node) => node.scrollHeight > node.clientHeight + 1)
+    if (cortada) {
+      window.alert(`La hoja "${cortada.dataset.pdfLabel ?? 'operacional'}" no cabe completa: puede faltar información.`)
+    }
 
     // Captura
-    const canvas = await html2canvas(node, {
-      scale: 1.5,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      logging: false,
-      windowWidth: node.scrollWidth,
-      windowHeight: node.scrollHeight,
-    })
+    const canvases = await Promise.all(
+      nodes.map((node) =>
+        html2canvas(node, {
+          scale: 1.5,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: node.scrollWidth,
+          windowHeight: node.scrollHeight,
+        })
+      )
+    )
 
     // Loop de calidad para mantener < 2 MB
     let quality = 0.85
@@ -385,7 +515,10 @@ export async function exportarPdfOperacional({ cot, global, inmobiliariaNombre, 
     let lastSize = 0
     for (let attempt = 0; attempt < 10; attempt++) {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true })
-      pdf.addImage(canvas.toDataURL('image/jpeg', quality), 'JPEG', 0, 0, 215.9, 279.4)
+      canvases.forEach((canvas, i) => {
+        if (i > 0) pdf.addPage('letter', 'portrait')
+        pdf.addImage(canvas.toDataURL('image/jpeg', quality), 'JPEG', 0, 0, 215.9, 279.4)
+      })
       const blob = pdf.output('blob')
       lastPdf = pdf
       lastSize = blob.size

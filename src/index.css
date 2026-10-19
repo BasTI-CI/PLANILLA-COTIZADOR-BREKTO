@@ -174,6 +174,41 @@ input[type='number'] {
   text-align: right;
 }
 
+/* Aviso de UF de respaldo (B-09): barra bajo el header, visible en cualquier ancho */
+.uf-aviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 32px;
+  background: rgba(245,158,11,0.12);
+  border-bottom: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  font-size: 13px;
+  font-weight: 500;
+}
+.uf-aviso form { display: flex; gap: 8px; }
+.uf-aviso input {
+  background: var(--color-surface);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 8px;
+  width: 120px;
+}
+.uf-aviso button {
+  background: var(--color-warning);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #0a0e1a;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
 .header-nav {
   display: flex;
   gap: 4px;
@@ -216,6 +251,7 @@ input[type='number'] {
 /* ── Cotizaciones — Tabs de selección ─────────────────────────────────── */
 .cotizacion-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 20px;
@@ -715,6 +751,7 @@ tr.total-row td {
 @media (max-width: 600px) {
   .app-header { padding: 0 16px; }
   .header-center { display: none; }
+  .uf-aviso { padding: 10px 16px; }
 }
 
 /* ── Animaciones ───────────────────────────────────────────────────────── */
@@ -820,4 +857,26 @@ input.form-input.input-no-spinner[type='number'],
     border: 1px solid #e2e8f0;
     break-inside: avoid;
   }
+}
+
+/* ── Hojas PDF: aisladas del tema oscuro global (B-05) ─────────────────────
+   Las reglas de elemento de arriba (body, table, th, td) se cuelan dentro de
+   las hojas [data-pdf-page] y dejan texto claro sobre blanco o tapan las
+   cabeceras azules. Aquí se neutraliza solo color/fondo/borde; padding,
+   font-size, text-transform y white-space se mantienen.
+   B-10: el contenedor de medición [data-pdf-medicion] lleva las mismas reglas,
+   para que mida igual que la hoja (si no, mide con el line-height del body). */
+[data-pdf-page="true"], [data-pdf-medicion] { line-height: 1.35; color: #0f172a; }
+[data-pdf-page="true"] thead, [data-pdf-medicion] thead { position: static; }
+[data-pdf-page="true"] th, [data-pdf-medicion] th { background: transparent; color: inherit; border-bottom: none; }
+[data-pdf-page="true"] td,
+[data-pdf-page="true"] td:first-child,
+[data-pdf-medicion] td,
+[data-pdf-medicion] td:first-child { color: inherit; font-weight: inherit; border-bottom: none; }
+[data-pdf-page="true"] tr:hover td, [data-pdf-medicion] tr:hover td { background: transparent; }
+
+/* B-04: foco visible del switch compra contado (solo teclado) */
+.switch-compra-contado:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

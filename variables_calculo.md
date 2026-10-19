@@ -77,7 +77,7 @@ Implementado en `mapStockItemToUnidadSupabase` ([src/lib/getStock.ts](src/lib/ge
 |---|---|---|---|
 | `proyecto` | `proyecto_nombre` | `proyecto_nombre` | Precedencia sobre `ProyectoSupabase.nombre` si viene |
 | `comuna` | `comuna` | `proyecto_comuna` | Precedencia sobre `ProyectoSupabase.comuna` si viene |
-| — | — | `proyecto_barrio` | `""` (no se usa) |
+| — | — | `proyecto_barrio` | `""` al cargar cualquier unidad, desde cualquier backend: **siempre manual** (B-11 `0becd8b`, `barrioInicialAlCargarUnidad()` en `mapToDatosPropiedad.ts`; punto único a reemplazar si llega la API de metro). En el PDF comercial sale en «Información del Proyecto» solo si no está vacío (B-10) |
 | `direccion` (ignorado) | — | `proyecto_direccion` | `""` — ocultado hasta cierre comercial |
 
 #### Unidad
@@ -97,8 +97,8 @@ Implementado en `mapStockItemToUnidadSupabase` ([src/lib/getStock.ts](src/lib/ge
 | Columna `stock` | `UnidadSupabase` | Notas |
 |---|---|---|
 | `precio_lista` | `precio_lista_uf` | Directo |
-| `descuento` | `descuento_uf` | Directo |
-| — (NO se lee) | `precio_neto_uf` | **Derivado en el mapper:** `precio_lista − descuento`. Cumple invariante §8.1 por construcción. La columna `precio_neto` de `stock` existe pero **no se usa** (es redundante con la derivación). |
+| `descuento` | `descuento_uf` | **(B-03 · aprobado 2026-10-15 · implementado `4764915` en Testing)** La columna trae un **porcentaje 0–100** del precio lista (15 = 15 %), misma escala que `f_desc_bono_inmobiliario`. Regla: `descuento_uf = round2(precio_lista × descuento / 100)`; si la fila trae `descuento_uf` explícito, se usa tal cual. Sin heurísticas de escala: hay filas con 0,5 que significan 0,5 %. VERIFICADO por PP contra 11.507 filas de get-stock (2026-10-15 23:50): 8.393 cumplen `lista × (1 − descuento/100) ≈ precio_neto`, 3.114 traen 0, ninguna calza como fracción. Antes se copiaba directo como UF (error: un 15 % restaba 15 UF). |
+| — (NO se lee) | `precio_neto_uf` | **Derivado en el mapper:** `precio_lista − descuento_uf` (con `descuento_uf` ya convertido, ver fila anterior). Cumple invariante §8.1 por construcción. La columna `precio_neto` de `stock` existe pero **no se usa**; sirve para contrastar (`precio_lista × (1 − descuento/100) ≈ precio_neto`). Algunos proyectos (ej. Norte Verde) guardan `precio_neto` redondeado a entero (≤ 0,2 UF de diferencia); no cambia la regla. |
 
 #### Bonos / beneficios
 
@@ -307,6 +307,32 @@ Usado por `calcularResultadosCotizacion` para plusvalía y arriendo (§3.4–3.5
 
 `pie_pct + hipotecario_aprobacion_pct` debe ser `≈ 1`. Si no, el motor solo emite `console.warn`; conviene validar en API v2.
 
+### Compra al contado (B-04 · aprobado 2026-10-15, por implementar)
+
+Nuevo booleano por cotización **`compra_contado`** (default `false`). BR: _«Comprar al contado es
+comprar sin crédito. Si el departamento vale 100 millones, se pagan 100 millones en billetes. No
+hay interés, dividendo, cuotas, nada. El bono pie evidentemente no se aplica tampoco.»_
+
+Con `compra_contado = true`, el motor usa valores **efectivos** (los ingresados por el asesor se
+conservan, para volver atrás al desactivar). BR (2026-10-16): _«un departamento no incluye bono
+inmobiliario si va al contado … el crédito es 0% y el pago es en una sola cuota igual al 100% del
+precio real de compra del departamento y sus eventuales adicionales. Sin bono.»_
+
+| Variable | Valor efectivo |
+|---|---|
+| `bono_descuento_pct` (BI) | `0` → `valor_tasacion_uf = precio_compra_depto_uf`; no hay BI repercutido |
+| `valor_escritura_uf` | `= precio_compra_total_uf` (depto + estacionamiento + bodega, con descuentos ya aplicados) |
+| `pie_pct` | `1` → `pie_total_uf = precio_compra_total_uf` |
+| `hipotecario_aprobacion_pct` | `0` → `monto_credito_uf = 0` |
+| `dividendo_total_uf`, seguros (desgravamen, sismos, vida) | `0` (no aplica el mínimo de seguros de §3.3) · tabla de amortización vacía |
+| Tramos del pie | **una sola cuota**: todo en upfront (mes 1 del flujo); cuotas y cuotón = 0 |
+| `bonoPieUf` | `0` → `pie_a_pagar_uf = precio_compra_total_uf` |
+
+Consecuencias: §8.3 y §8.4 se cumplen (1 + 0; pie = escrituración). Plusvalía §3.4 se calcula
+sobre esa misma base. Flujo §4.2: `dividendo − arriendo = −arriendo` post-entrega (ingreso puro).
+El input de crédito (mín. 50 %) y la regla §8.3 no deben bloquear este modo. IVA §4.1 no cambia
+(ya se calcula sobre el precio de compra del depto).
+
 ### Diversificación (fuera del detalle cotización)
 
 Variables globales del módulo 60 meses: `diversif_*`, `mes_entrega_primer_depto`, etc. Ver §4.
@@ -420,6 +446,48 @@ Constante: `DIAS_MES_RENTA_CORTA = 30` (mes estándar para renta corta).
 6. `cap_rate_anual_pct = (ingreso_uf * 12) / valor_escritura_uf` (perfil activo según `tipo_renta`)
 7. `ingreso_neto_flujo_clp = ingreso_neto_clp` (va a diversificación cuando aplica)
 8. En **resultados** (`ResultadosArriendo`), `airbnb_ingreso_bruto_clp` es el **bruto mensual calculado** en renta corta (0 en larga); sirve para desglose en UI/PDF, no es campo de entrada.
+
+### 3.5.1 Arriendo garantizado (AG) → arriendo de mercado (B-07 / B-08 · aprobado 2026-10-15 · implementado: B-08 `73b9676`, B-07 `94efb1c` en Testing; función `arriendoFlujoUnidadMes(r, j)` en `calculosDiversificacion.ts`)
+
+**Solo renta larga.** En renta corta los campos AG se ignoran.
+
+Entradas (manuales; el stock no trae arriendo):
+
+| Etiqueta UI | Variable | Notas |
+|---|---|---|
+| Arriendo promedio zona | `arriendo_mensual_clp` (existente) | Pasa a significar **arriendo de mercado**. Sin AG, es el único arriendo, como hoy |
+| Meses de AG | `ag_meses` (nuevo, entero ≥ 0) | `0` = el proyecto no tiene AG |
+| Arriendo garantizado | `arriendo_garantizado_clp` (nuevo) | Monto mensual neto garantizado |
+
+**Activación** (BR, 2026-10-16): un booleano **"Arriendo garantizado"** habilita las casillas
+"Meses de AG" y "Arriendo garantizado". Apagado = sin AG (se ignoran `ag_meses` y
+`arriendo_garantizado_clp`). Los meses son libres (12, 24, 36, 48…) y el monto también. Se usa el
+booleano existente `promociones.arriendo_garantizado` como interruptor (una sola fuente; la
+leyenda de promociones sale de él).
+
+**Ingreso por mes en el flujo (§4.2 paso 2).** Sea `E = mes_entrega_flujo` y `j = mes − E` (el
+primer mes post-entrega, `j = 1`, es el primer arriendo cobrado: BR, _«el primer arriendo
+garantizado es al final del primer mes de entrega … flujo de caja del mes dos»_, contando la
+entrega como mes uno).
+
+    ingreso_mes(j) = arriendo_garantizado_clp   si 1 ≤ j ≤ ag_meses
+                   = arriendo_mensual_clp       si j > ag_meses
+
+y `dividendo_menos_arriendo_clp` usa `ingreso_mes(j)` en vez del `ingreso_neto_flujo_clp`
+constante. Ejemplo con `E = 12`, `ag_meses = 24`: AG en los meses 13–36 del flujo (24 pagos),
+mercado desde el mes 37 (= mes 25 desde la entrega, contando la entrega como mes 0).
+
+**Corte en el mes 60:** el flujo llega hasta el mes 60. Si el AG sigue más allá, los meses
+restantes simplemente no entran (BR: _«No forman parte del flujo de caja proyectado.»_).
+
+**Indicadores (cotización individual y resumen).** Con AG activo se presentan **los dos
+arriendos** y sus diferencias, bajo un apartado **"Arriendo"**:
+
+- `diferencia_div_ag_clp = arriendo_garantizado_clp − dividendo_clp` (meses 1…N)
+- `diferencia_div_mercado_clp = arriendo_mensual_clp − dividendo_clp` (desde N+1)
+- `cap_rate_anual_pct` usa el arriendo de **mercado** (largo plazo).
+
+Sin AG (booleano apagado), todo queda como §3.5.
 
 ## 3.6 Resumen de inversión (gráficos auxiliares)
 

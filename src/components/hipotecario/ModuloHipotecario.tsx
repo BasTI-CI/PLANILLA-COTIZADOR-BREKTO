@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore'
 import SimuladorHipotecario from './SimuladorHipotecario'
+import { letraCotizacion } from '@/lib/cotizaciones'
 
 export default function ModuloHipotecario() {
   const { cotizaciones, cotizacion_activa_idx, setCotizacionActiva } = useAppStore()
@@ -13,7 +14,7 @@ export default function ModuloHipotecario() {
             className={`cotizacion-tab ${cotizacion_activa_idx === idx ? 'active' : ''}`}
             onClick={() => setCotizacionActiva(idx)}
           >
-            Cotización {String.fromCharCode(65 + idx)}
+            Cotización {letraCotizacion(idx)}
             {cot.activa && <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>✓</span>}
           </button>
         ))}

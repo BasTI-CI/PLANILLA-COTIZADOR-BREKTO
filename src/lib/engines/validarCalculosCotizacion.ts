@@ -1,6 +1,7 @@
 import type { Cotizacion, DatosPropiedad, ResultadosCotizacion } from '@/types'
 import { valorTasacionDeptoUf } from './calculosCotizacion'
 import { precioCompraTotalUf } from './precioCompra'
+import { cotizacionEfectiva } from './compraContado'
 
 /** Tolerancia por defecto para comparaciones UF en validación cruzada. */
 const EPS_UF_DEFAULT = 0.02
@@ -51,6 +52,8 @@ export function validarResultadosCotizacion(
   const epsPct = opts?.epsPct ?? EPS_PCT_DEFAULT
   const epsSuma = opts?.epsSumaCapital ?? EPS_UF_SUMA_CAPITAL
   const fallos: FalloValidacion[] = []
+  // B-04: se valida contra la misma cotización efectiva que usa el motor.
+  cot = cotizacionEfectiva(cot)
   const { propiedad, pie, hipotecario } = cot
 
   const dListaNeto = Math.abs(

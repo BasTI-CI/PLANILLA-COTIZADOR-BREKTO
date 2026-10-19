@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Cotizacion } from '@/types'
+import type { Cotizacion, DatosRentabilidad } from '@/types'
 import { DEFAULT_HIPOTECARIO, DEFAULT_PIE, DEFAULT_PROMOCIONES, DEFAULT_RENTABILIDAD } from '@/types'
 import {
   calcularArriendo,
@@ -186,6 +186,105 @@ describe('calcularArriendo', () => {
     expect(r.airbnb_ingreso_bruto_clp).toBe(bruto)
     expect(r.ingreso_neto_flujo_clp).toBe(neto)
     expect(r.airbnb_admin_clp).toBe(admin)
+  })
+
+  // §3.5.1 · Arriendo garantizado (AG): dividendo 10 UF × 40.000 = 400.000; mercado 500.000
+  const rentAg = (over: Partial<DatosRentabilidad> = {}): DatosRentabilidad => ({
+    ...DEFAULT_RENTABILIDAD,
+    tipo_renta: 'larga',
+    arriendo_mensual_clp: 500_000,
+    ag_meses: 24,
+    arriendo_garantizado_clp: 450_000,
+    ...over,
+  })
+
+  it('AG: sin 5º parámetro no hay AG aunque haya meses y monto', () => {
+    const r = calcularArriendo(rentAg(), 10, 2000, 40_000)
+    expect(r.tiene_ag).toBe(false)
+    expect(r.ag_meses).toBe(0)
+    expect(r.arriendo_garantizado_clp).toBe(0)
+    expect(r.diferencia_div_ag_clp).toBe(0)
+    expect(r.diferencia_div_mercado_clp).toBe(100_000)
+    expect(r.resultado_mensual_clp).toBe(100_000)
+    expect(r.ingreso_neto_flujo_clp).toBe(500_000)
+  })
+
+  it('AG: habilitado con 24 meses → diferencias AG y mercado; flujo y cap rate con mercado', () => {
+    const sinAg = calcularArriendo(rentAg(), 10, 2000, 40_000)
+    const r = calcularArriendo(rentAg(), 10, 2000, 40_000, true)
+    expect(r.tiene_ag).toBe(true)
+    expect(r.ag_meses).toBe(24)
+    expect(r.arriendo_garantizado_clp).toBe(450_000)
+    expect(r.dividendo_clp).toBe(400_000)
+    expect(r.diferencia_div_ag_clp).toBe(50_000)
+    expect(r.diferencia_div_mercado_clp).toBe(100_000)
+    expect(r.ingreso_neto_flujo_clp).toBe(500_000)
+    expect(r.cap_rate_anual_pct).toBe(sinAg.cap_rate_anual_pct)
+  })
+
+  it('AG: habilitado con 0 meses → sin AG', () => {
+    const r = calcularArriendo(rentAg({ ag_meses: 0 }), 10, 2000, 40_000, true)
+    expect(r.tiene_ag).toBe(false)
+  })
+
+  it('AG: habilitado con 48 meses', () => {
+    const r = calcularArriendo(rentAg({ ag_meses: 48 }), 10, 2000, 40_000, true)
+    expect(r.tiene_ag).toBe(true)
+    expect(r.ag_meses).toBe(48)
+  })
+
+  it('AG: meses no enteros se truncan (23,7 → 23)', () => {
+    const r = calcularArriendo(rentAg({ ag_meses: 23.7 }), 10, 2000, 40_000, true)
+    expect(r.ag_meses).toBe(23)
+  })
+
+  it('AG: monto menor al dividendo → diferencia negativa', () => {
+    const r = calcularArriendo(rentAg({ arriendo_garantizado_clp: 350_000 }), 10, 2000, 40_000, true)
+    expect(r.diferencia_div_ag_clp).toBe(-50_000)
+  })
+
+  it('AG: renta corta ignora AG y no informa diferencias', () => {
+    const base = {
+      ...DEFAULT_RENTABILIDAD,
+      tipo_renta: 'corta' as const,
+      airbnb_valor_dia_clp: 50_000,
+      airbnb_ocupacion_pct: 2 / 3,
+      airbnb_admin_pct: 0.25,
+      gastos_comunes_clp: 50_000,
+    }
+    const sinAg = calcularArriendo(base, 5, 1000, 40_000)
+    const r = calcularArriendo(
+      { ...base, ag_meses: 24, arriendo_garantizado_clp: 450_000 },
+      5,
+      1000,
+      40_000,
+      true
+    )
+    expect(r.tiene_ag).toBe(false)
+    expect(r.diferencia_div_ag_clp).toBe(0)
+    expect(r.diferencia_div_mercado_clp).toBe(0)
+    expect(r.ingreso_neto_flujo_clp).toBe(sinAg.ingreso_neto_flujo_clp)
+  })
+
+  it('AG: rentabilidad sin campos AG (datos antiguos) no produce NaN', () => {
+    const { ag_meses: _m, arriendo_garantizado_clp: _a, ...resto } = rentAg()
+    const r = calcularArriendo(resto as DatosRentabilidad, 10, 2000, 40_000, true)
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v === 'number') expect(Number.isNaN(v), k).toBe(false)
+    }
+    expect(r.tiene_ag).toBe(false)
+  })
+
+})
+
+describe('calcularResultadosCotizacion', () => {
+  it('AG: tiene_ag sigue a promociones.arriendo_garantizado', () => {
+    const cot = cotEjemploPlanilla()
+    cot.rentabilidad = { ...cot.rentabilidad, ag_meses: 24, arriendo_garantizado_clp: 450_000 }
+    cot.promociones = { ...cot.promociones, arriendo_garantizado: true }
+    expect(calcularResultadosCotizacion(cot, 40_000).arriendo.tiene_ag).toBe(true)
+    cot.promociones = { ...cot.promociones, arriendo_garantizado: false }
+    expect(calcularResultadosCotizacion(cot, 40_000).arriendo.tiene_ag).toBe(false)
   })
 })
 
