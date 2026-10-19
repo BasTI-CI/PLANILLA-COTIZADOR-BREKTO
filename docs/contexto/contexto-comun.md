@@ -203,6 +203,16 @@ worktree por ID (fix/b05-slug) ──merge──▶ Testing ──PR──▶ or
   STOP y reportar a PP. No se resuelven conflictos sin BR. Después del merge, correr
   `pnpm test` y `pnpm build` en el worktree de `testing`; si fallan, se reporta (no se revierte
   solo).
+- **Resolver choques con `Testing`** (BR, 2026-10-17): con su autorización, Code trae `Testing`
+  a **su** rama en su worktree (`git merge Testing`, no rebase), resuelve conservando ambos lados,
+  corre tests y build, y PP audita que no se perdió nada ya integrado. **De a un encargo por vez**
+  cuando tocan los mismos archivos (primero el que corrige la base). Medir antes sin escribir:
+  `git merge-tree --write-tree Testing <rama>`.
+- **El asunto del merge a `Testing` lleva el ID**: `-m "merge: B-05 a Testing (B-05)"`.
+- **Si el permiso de la ventana de Code rechaza el merge**, una autorización por mensaje no lo
+  reemplaza: Code deja a BR un bloque ▶️ o BR aprueba en esa ventana.
+- **Revisión visual de BR en una sola pasada**, con todo el lote en `Testing` (`pnpm dev --port
+  5180` en el worktree de `testing`).
 - **El árbol principal es de BR y del PM** (rama `Cotizador_Dev`). Code no hace `checkout` ahí.
 - **Autorización vigente (BR, 2026-10-15 noche):** las ventanas de Code pueden **commitear en su
   rama y mergear a `Testing` en local**. **Push y PR siguen requiriendo autorización explícita de

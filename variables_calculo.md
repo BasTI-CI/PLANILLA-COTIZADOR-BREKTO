@@ -77,7 +77,7 @@ Implementado en `mapStockItemToUnidadSupabase` ([src/lib/getStock.ts](src/lib/ge
 |---|---|---|---|
 | `proyecto` | `proyecto_nombre` | `proyecto_nombre` | Precedencia sobre `ProyectoSupabase.nombre` si viene |
 | `comuna` | `comuna` | `proyecto_comuna` | Precedencia sobre `ProyectoSupabase.comuna` si viene |
-| — | — | `proyecto_barrio` | `""` (no se usa) |
+| — | — | `proyecto_barrio` | `""` al cargar cualquier unidad, desde cualquier backend: **siempre manual** (B-11 `0becd8b`, `barrioInicialAlCargarUnidad()` en `mapToDatosPropiedad.ts`; punto único a reemplazar si llega la API de metro). En el PDF comercial sale en «Información del Proyecto» solo si no está vacío (B-10) |
 | `direccion` (ignorado) | — | `proyecto_direccion` | `""` — ocultado hasta cierre comercial |
 
 #### Unidad
@@ -97,7 +97,7 @@ Implementado en `mapStockItemToUnidadSupabase` ([src/lib/getStock.ts](src/lib/ge
 | Columna `stock` | `UnidadSupabase` | Notas |
 |---|---|---|
 | `precio_lista` | `precio_lista_uf` | Directo |
-| `descuento` | `descuento_uf` | **(B-03 · aprobado 2026-10-15, por implementar)** La columna trae un **porcentaje 0–100** del precio lista (15 = 15 %), misma escala que `f_desc_bono_inmobiliario`. Regla: `descuento_uf = round2(precio_lista × descuento / 100)`; si la fila trae `descuento_uf` explícito, se usa tal cual. Sin heurísticas de escala: hay filas con 0,5 que significan 0,5 %. VERIFICADO por PP contra 11.507 filas de get-stock (2026-10-15 23:50): 8.393 cumplen `lista × (1 − descuento/100) ≈ precio_neto`, 3.114 traen 0, ninguna calza como fracción. Antes se copiaba directo como UF (error: un 15 % restaba 15 UF). |
+| `descuento` | `descuento_uf` | **(B-03 · aprobado 2026-10-15 · implementado `4764915` en Testing)** La columna trae un **porcentaje 0–100** del precio lista (15 = 15 %), misma escala que `f_desc_bono_inmobiliario`. Regla: `descuento_uf = round2(precio_lista × descuento / 100)`; si la fila trae `descuento_uf` explícito, se usa tal cual. Sin heurísticas de escala: hay filas con 0,5 que significan 0,5 %. VERIFICADO por PP contra 11.507 filas de get-stock (2026-10-15 23:50): 8.393 cumplen `lista × (1 − descuento/100) ≈ precio_neto`, 3.114 traen 0, ninguna calza como fracción. Antes se copiaba directo como UF (error: un 15 % restaba 15 UF). |
 | — (NO se lee) | `precio_neto_uf` | **Derivado en el mapper:** `precio_lista − descuento_uf` (con `descuento_uf` ya convertido, ver fila anterior). Cumple invariante §8.1 por construcción. La columna `precio_neto` de `stock` existe pero **no se usa**; sirve para contrastar (`precio_lista × (1 − descuento/100) ≈ precio_neto`). Algunos proyectos (ej. Norte Verde) guardan `precio_neto` redondeado a entero (≤ 0,2 UF de diferencia); no cambia la regla. |
 
 #### Bonos / beneficios
@@ -447,7 +447,7 @@ Constante: `DIAS_MES_RENTA_CORTA = 30` (mes estándar para renta corta).
 7. `ingreso_neto_flujo_clp = ingreso_neto_clp` (va a diversificación cuando aplica)
 8. En **resultados** (`ResultadosArriendo`), `airbnb_ingreso_bruto_clp` es el **bruto mensual calculado** en renta corta (0 en larga); sirve para desglose en UI/PDF, no es campo de entrada.
 
-### 3.5.1 Arriendo garantizado (AG) → arriendo de mercado (B-07 / B-08 · aprobado 2026-10-15, por implementar)
+### 3.5.1 Arriendo garantizado (AG) → arriendo de mercado (B-07 / B-08 · aprobado 2026-10-15 · implementado: B-08 `73b9676`, B-07 `94efb1c` en Testing; función `arriendoFlujoUnidadMes(r, j)` en `calculosDiversificacion.ts`)
 
 **Solo renta larga.** En renta corta los campos AG se ignoran.
 

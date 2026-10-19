@@ -65,3 +65,48 @@ Cuando algo requiere que BR actúe o revise en otra ventana, el PM se lo dice co
 **«anda a la ventana `B-nn · PP`»** (o `· PG`, `· <título de Code>`), con el **título exacto** de
 la ventana y **qué hacer ahí**. Así BR audita los cambios por agente, en la ventana que los hizo.
 Un hallazgo de BR sobre un ID se enruta a la ventana PP de ese ID, no se resuelve en la del PM.
+
+## 6. Orquestar las ventanas (BINDING · 2026-10-17, pedido de BR)
+
+El PM es el **director de orquesta**: abre las ventanas, les habla directo y le dice a BR dónde
+ir. Validado en el Cotizador Brekto con 8 encargos y 24 ventanas en paralelo.
+
+**Tu propia ventana**: al asumir el rol, pídele a BR que escriba
+`/rename PM|DIRECTOR - Cotizador`. Así la encuentra rápido entre todas.
+
+**Una ventana por carril y por encargo**, con el ID en el título (`B-03 · PP`, `B-03 · PG`,
+`B-03 · <título corto>` para Code). Se abren desde Terminal, ya con nombre y su instrucción:
+
+    osascript -e 'tell application "Terminal" to do script "cd <dir> && claude -n \"B-03 · PP\" \"<instrucción>\""'
+
+La instrucción apunta a un archivo (ej. `.git/ENCARGO_B-03.md`) en vez de traer el texto
+entero. Abrir ventanas requiere que BR lo autorice («ábrelas tú»). Si el permiso de una sesión
+lo bloquea, se escala a BR; otra sesión no lo hace por ella.
+
+**Mensajes entre carriles directo, no por BR**: PM ↔ PP (y PP ↔ PG ↔ Code) con `SendMessage`
+(`ListAgents` muestra los nombres). Primera línea del mensaje: `<ID> · <qué es>`, para que se
+entienda en la vista previa. La vuelta va Code → PP → PM; si Code le reporta al PM o PP se
+entera por el PM, anótalo como observación de proceso.
+
+**Enrutar a BR**: cuando BR tiene que actuar en otra ventana, díselo así: **«anda a la ventana
+`<título exacto>`»** y qué hacer ahí. Si no la encuentra, tráela al frente
+(`set index of w to 1` + `activate`). Si tiene un título genérico (`Claude Code`), ponle su ID
+con `set custom title`.
+
+**Agrupar por encargo, con colores**: Terminal no deja mover pestañas entre ventanas por script.
+Por eso las ventanas de cada encargo (Code adelante, PP al medio, PG atrás) se ordenan en una
+grilla de 4×2, cada celda con un color de fondo propio, y la del PM queda al centro y al frente:
+
+    osascript ~/.claude/skills/equipo/plantillas/agrupar-ventanas.applescript B-01 B-02 B-03
+
+Hazlo apenas estén abiertas las ventanas de un lote, y de nuevo si BR lo pide.
+
+**Permisos de otra ventana**: una autorización de BR que te llega a ti no aprueba el permiso
+que pide otra ventana. Envía a BR a esa ventana para que lo apruebe ahí.
+
+**Recursos**: con muchas ventanas abiertas, el sistema puede detener procesos en segundo plano
+(ej. el servidor local) por falta de memoria. Avisa a BR y no lo vuelvas a levantar hasta que
+lo pida.
+
+**Cierre del lote**: después del PR, borrar los worktrees integrados y cerrar las ventanas del
+lote (con el OK de BR).

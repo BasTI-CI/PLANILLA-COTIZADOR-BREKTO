@@ -141,7 +141,7 @@ En el PDF están etiquetadas distinto: en B "Bonificación inmobiliaria (BI X.XX
 
 Hay **dos tipos** y NO deben mezclarse:
 
-- **Comercial (Propuesta de Inversión):** consolida 1–4 cotizaciones, va al cliente. `ModuloPDF.tsx`.
+- **Comercial (Propuesta de Inversión):** consolida 1–10 cotizaciones (A–J, B-01; el selector de la pestaña PDF decide cuáles van), va al cliente. `ModuloPDF.tsx`.
 - **Operacional / UGC / Jira:** un PDF por cotización individual, uso interno. `PdfOperacional.tsx`. NUNCA al cliente.
 
 La separación de audiencias se introdujo en `cdc4618` (eliminación de la hoja Jira del comercial). El operacional independiente se implementó en `302484b`.
@@ -154,14 +154,15 @@ Archivo: [`src/components/pdf/ModuloPDF.tsx`](./src/components/pdf/ModuloPDF.tsx
 
 | Hoja | Orientación | Contenido |
 |---|---|---|
-| H1 Portada | Portrait | Isotipo Brekto (PNG `src/assets/ISOTIPO.BRIKTO-2.png`) + Brekto Wordmark con degradado SVG inline + asesor + cliente + tabla resumen Proyecto/Unidad/Tipología + fecha y `1 UF = $...` arriba derecha |
-| H2 Comparativa + KPIs | Landscape | Tabla 14 columnas + tarjetas KPI (Plusvalía 5y, Ganancia venta, Resultado mensual) |
+| H1 Portada | Portrait | Isotipo Brekto (PNG `src/assets/ISOTIPO.BRIKTO-2.png`) + Brekto Wordmark con degradado SVG inline + asesor + cliente + tabla resumen Proyecto/Unidad/Tipología + fecha y `1 UF = $...` arriba derecha. Si la tabla no cabe, sigue en «Portada (cont.)» (B-10) |
+| H2a Comparativa | Landscape | Tabla 14 columnas con hasta 10 cotizaciones en la misma hoja (`COMPARATIVA_POR_HOJA = 10`, B-01), para comparar de un vistazo. Hoja «(cont.)» solo si no cabe (B-10) |
+| H2b KPIs | Landscape | Tarjetas KPI (Plusvalía 5y, Ganancia venta, Resultado mensual), las 10 en una hoja (`KPIS_POR_HOJA = 10`, `KPIS_COLUMNAS = 5`, B-01) |
 | H3 Gráficos + Tabla anual | Landscape | 3 LineCharts (Patrimonio sin puntos · Caja · Resultado financiero) + cashflow anual |
-| **H4 Por cotización (Hoja 1 de 2)** | Portrait | Banda azul superior + Resumen general (3 cards) + **A** Detalle unidad + **B** Precio compra y valor escrituración (lista→descuentos→PRECIO COMPRA→BI→VALOR ESCRITURACIÓN DEPARTAMENTO→adicionales) + **C** Pie y forma de pago + **D** Escrituración y crédito hipotecario |
-| **H5 Por cotización (Hoja 2 de 2)** | Portrait | Banda azul superior + **E** Resultado de la cotización (Plusvalía, Ganancia venta, Dividendo, Arriendo, Resultado mensual) + **F** Promociones + Política de Cotización y Reserva |
-| Anexo 60m (opcional) | Landscape × 3 | Tabla detallada `1–24` · `25–48` · `49–60`. Cabeceras consolidan 60m completos |
+| **H4 Por cotización (Hoja 1 de M)** | Portrait | Banda azul superior + Resumen general (3 cards; «Información del Proyecto» = Proyecto, Comuna, Barrio si no está vacío, Unidad, Tipo de entrega — **sin inmobiliaria**, P-16) + **A** Detalle unidad + **B** Precio compra y valor escrituración (lista→descuentos→PRECIO COMPRA→BI→VALOR ESCRITURACIÓN DEPARTAMENTO→adicionales) + **C** Pie y forma de pago |
+| **H5 Por cotización (Hoja 2 de M)** | Portrait | Banda azul superior + **D** Escrituración y crédito hipotecario + **E** Resultado de la cotización (Plusvalía, Ganancia venta, Dividendo, Arriendo, Resultado mensual, **Devolución de IVA** de esa unidad o «No aplica») + **Relación Arriendo / Dividendo** (B-08: dividendo una vez; «Diferencia AG − dividendo», «Diferencia mercado − dividendo», «Diferencia renta corta − dividendo») + **F** Promociones + Política de Cotización y Reserva |
+| Anexo 60m (opcional) | Landscape × 3 | Tabla detallada `1–24` · `25–48` · `49–60`. Cabeceras consolidan 60m completos. Hoja «(cont.)» si un tramo no cabe (B-10) |
 
-Total por cotización activa: **2 hojas portrait** (A–D en H4, E–F+Política en H5).
+Total por cotización activa: **2 hojas portrait** en el caso normal (grupo 1 = Resumen + A + B + C; grupo 2 = D + E + Relación Arriendo + F + Política). **Auto-paginación por secciones (B-10)**: las alturas se miden en la vista previa (`repartirEnHojas`, `[data-pdf-medicion]`, tras `document.fonts.ready`); una sección que no cabe pasa **entera** a la hoja siguiente, nunca se adelanta, y la banda dice «Hoja N de M» (con desborde, 3 hojas). Nunca se achica la letra. Vista previa y archivo son las mismas hojas. La guardia de `scrollHeight` queda solo como red final: en la matriz de 17 escenarios de B-10 no se dispara. Regla de Bastián: «No puedo tener errores de exportación».
 
 **Identidad visual:**
 - Azul oscuro corporativo `#0d4d80` (`T.accent`) en títulos / subtítulos / cabeceras de tabla con fondo + texto blanco bold.
@@ -169,18 +170,18 @@ Total por cotización activa: **2 hojas portrait** (A–D en H4, E–F+Política
 - Texto "Brekto" del header con SVG inline (`<text fill="url(#grad)">`) — **NO usar `background-clip: text`** porque html2canvas no lo respeta y queda como rectángulo de color (probado y descartado).
 - Tablas con cabecera azul + filas destacadas (`Row destacada`) para totales / hitos clave (PIE A PAGAR, VALOR ESCRITURACIÓN DEPARTAMENTO/TOTAL, PRECIO COMPRA, Crédito, Dividendo, Ganancia venta, Resultado mensual).
 
-**Lo que NO va aquí por diseño:** comisiones, dirección completa, datos operacionales, `califica_iva`, `mes_entrega_flujo` visibles, `proyecto_direccion`. Eso va en el operacional.
+**Lo que NO va aquí por diseño:** **nombre de la inmobiliaria** (regla de Bastián, 2026-10-18: «La inmobiliaria NUNCA se le transmite al cliente»; del proyecto solo van nombre, comuna y barrio), comisiones, dirección completa, datos operacionales, `califica_iva`, `mes_entrega_flujo` visibles, `proyecto_direccion`. Eso va en el operacional.
 
 ### Cotización para Operaciones y UGC (uso interno)
 
 Archivo: [`src/components/pdf/PdfOperacional.tsx`](./src/components/pdf/PdfOperacional.tsx). Botón **"IMPRIMIR PARA USO INTERNO JIRA — OPERACIONES — UGC"** al final de cada `CotizacionForm` activa, antes del bloque "Resultado".
 
-- **Una hoja Letter portrait por cotización.**
+- **Una hoja Letter portrait por cotización**; si no cabe, pasa a una 2ª hoja con su encabezado (B-10). El exportador soporta N páginas.
 - **Descarga directa** (sin preview en pantalla) — render off-screen vía `createRoot` → `html2canvas` → `jsPDF` → `.save()` → `unmount`.
 - **Cap de tamaño 2 MB** (vs 10 MB del comercial) — para envío rápido por correo interno. Loop de calidad JPEG.
 - Filename: `Operacional_Cot[A-D]_[Cliente]_[fecha].pdf`.
 - Header: isotipo izq, datos asesor/cliente/inmob/proyecto/unidad centro, fecha+UF derecha. Badge "USO INTERNO JIRA / OPERACIONES / UGC".
-- Secciones a–g compactas con paleta clara: a) Antecedentes propiedad, b) Detalle precios y descuentos, c) Pie y forma de pago, d) Tasación y escrituración, e) Resumen financiero, f) Crédito, g) Promociones.
+- Secciones a–g compactas con paleta clara: a) Antecedentes propiedad, b) Detalle precios y descuentos, c) Pie y forma de pago, d) Tasación y escrituración, e) Resumen financiero, f) Crédito, g) Promociones. La devolución de IVA de la unidad (B-05) aparece junto a escrituración, pie y crédito, con el mismo monto que inyecta el flujo 60m.
 
 ### Componentes PDF reutilizables
 
@@ -208,7 +209,7 @@ Extendido en `cdc4618 / 302484b` para soportar ambos PDFs:
 | `asesor_nombre` | Asesor — header de ambos PDFs |
 | `asesor_correo` | Asesor — header de ambos PDFs |
 | `asesor_telefono` | Asesor — opcional, solo operacional |
-| `uf_valor_clp` | UF del día — usado en todo el motor + ambos PDFs |
+| `uf_valor_clp` | UF del día — usado en todo el motor + ambos PDFs. Fuente mindicador.cl; si falla, barra de aviso con ingreso manual (B-09). La UF manual no la pisa una respuesta tardía (P-09). Fuera de $30.000–$60.000 pide confirmación; los inputs aplican con Enter o al salir del campo (P-10) |
 | `cotizacion_fecha` | ISO date — visible en ambos PDFs |
 
 **Edición:** tarjeta **"📄 Datos del Documento"** en cada `CotizacionForm`, **antes** de "Fuente de Datos". Los inputs se bindean al store global, así editar en Cot A se sincroniza con B/C/D automáticamente. El sidebar de la pestaña PDF muestra esos datos como **solo lectura** con el mensaje "edita en pestaña Cotización".
@@ -221,7 +222,7 @@ Sección "ANTECEDENTES PROPIEDAD" tiene un `.map()` que aplica `readOnly={!modoM
 { label: 'Barrio', key: 'proyecto_barrio', type: 'text', alwaysEditable: true },
 ```
 
-El render aplica `readOnly={alwaysEditable ? false : !modoManual}` y `opacity: 1` cuando `alwaysEditable`. Hoy solo aplica a Barrio. Si el negocio agrega más campos libres (ej: comentarios comerciales), usar este patrón para no acoplarlos al toggle de modo manual.
+El render aplica `readOnly={alwaysEditable ? false : !modoManual}` y `opacity: 1` cuando `alwaysEditable`. Hoy solo aplica a Barrio, que además es **siempre manual**: ninguna fuente de stock lo autocompleta (B-11, regla de Bastián 2026-10-18). Si el negocio agrega más campos libres (ej: comentarios comerciales), usar este patrón para no acoplarlos al toggle de modo manual.
 
 ## Capa de datos (Supabase) — provisional
 
@@ -264,7 +265,7 @@ Dos proyectos en cuenta **Capital_Desarrollo**:
 ## Checklist al retomar trabajo
 
 1. `git status -sb && git branch -vv` — verificar rama y estado.
-2. ¿Hay PRs abiertos? `gh pr list` (si `gh` instalado) o revisar manualmente. Existe un PR `Cotizador_Dev → main` en el fork de Bastián que se actualiza con cada push.
+2. ¿Hay PRs abiertos? `gh pr list` (si `gh` instalado) o revisar manualmente. Al 2026-10-18 no hay ningún PR en el fork de Bastián (`gh pr list --state all` vacío); el PR `Cotizador_Dev → main` se abre al cerrar cada lote.
 3. Si Bastián describe el repo: contrastar contra realidad. Su mapa mental puede tener nombres invertidos (origin/capitalti, dev/Cotizador_Dev).
 4. Si Cursor muestra rama distinta a `git branch --show-current`: probable clone equivocado abierto. Verificar con `pwd` en terminal integrada de Cursor. Bastián tiene 2 clones: `~/Developer/GitHub/PLANILLA-COTIZADOR-BREKTO/` (correcto) y otro de `Cotizador-Multiple` / SebaVilla (NO usar).
 5. Antes de cambios visuales: tener claro si afectan el PDF **comercial** (`ModuloPDF.tsx`), el **operacional** (`PdfOperacional.tsx`), o ambos.
@@ -276,4 +277,5 @@ Dos proyectos en cuenta **Capital_Desarrollo**:
 | `cdc4618` | Rediseño completo del PDF comercial: multi-página Letter, isotipo, paleta corporativa, anexo en 3 hojas. Eliminada hoja Jira. |
 | `4978599` | docs: README + CLAUDE.md inicial. |
 | `302484b` | PDF Operacional UGC/Jira (un PDF por cotización, descarga directa, cap 2 MB). Tarjeta "Datos del Documento" en CotizacionForm. |
+| `Testing` 2026-10-18 | Lote B-01..B-11: hasta 10 cotizaciones A–J (B-01), descuento % del stock (B-03), switch Compra Contado junto a «Crédito Hipotecario» (B-04, `compra_contado`), PDF sin datos perdidos (B-05), bono pie en Resumen (B-06), flujo AG/mercado (B-07), Relación Arriendo / Dividendo (B-08), fuente UF con aviso y entrada manual (B-09, P-09, P-10), auto-paginación del PDF (B-10), sin inmobiliaria al cliente (P-16), barrio siempre manual (B-11). |
 | `84ebee7` | Reorganización A–F del detalle de cotización (estructura definida por Bastián, alineada al referente "Cotización Capital Inteligente — Tree"). Banda superior azul full-width, tablas con cabecera azul + filas destacadas. Voseo argentino corregido. Barrio editable libre. Gráfico Patrimonio sin puntos. |
