@@ -23,6 +23,7 @@ import { cotizacionEfectiva, esCompraContado } from '@/lib/engines/compraContado
 import { precioCompraDeptoUf } from '@/lib/engines/precioCompra'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
 import { letraCotizacion } from '@/lib/cotizaciones'
+import { formatSuperficie, formatM2 } from '@/lib/formatoSuperficie'
 import { useAppStore } from '@/store/useAppStore'
 import { repartirEnHojas } from './repartirEnHojas'
 import { Bloque, useAlturas, esperarLayoutEstable, MEDICION_STYLE } from './useAlturas'
@@ -187,7 +188,7 @@ function PdfOperacionalHojas({ cot, global, inmobiliariaNombre, proyectoNombre, 
       <Grid cols={4}>
         <StatBox label="Unidad" value={propiedad.unidad_numero || '—'} />
         <StatBox label="Tipología" value={propiedad.unidad_tipologia || '—'} />
-        <StatBox label="Sup. total" value={`${propiedad.unidad_sup_total_m2} m²`} sub={`int ${propiedad.unidad_sup_interior_m2} / terr ${propiedad.unidad_sup_terraza_m2}`} />
+        <StatBox label="Sup. total" value={formatM2(propiedad.unidad_sup_total_m2)} sub={`int ${formatSuperficie(propiedad.unidad_sup_interior_m2)} / terr ${formatSuperficie(propiedad.unidad_sup_terraza_m2)}`} />
         <StatBox label="Orientación" value={propiedad.unidad_orientacion || '—'} sub={`Entrega: ${propiedad.unidad_entrega || '—'}`} />
       </Grid>
     </>

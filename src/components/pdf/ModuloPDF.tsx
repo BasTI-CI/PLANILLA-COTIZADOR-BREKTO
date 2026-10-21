@@ -17,6 +17,7 @@ import type { Cotizacion, DatosDiversificacion, PromocionesCotizacion, Resultado
 import { DEFAULT_PROMOCIONES } from '@/types'
 import brektoIsotipoUrl from '@/assets/ISOTIPO.BRIKTO-2.png'
 import { MAX_COTIZACIONES, letraCotizacion } from '@/lib/cotizaciones'
+import { formatSuperficie, formatM2 } from '@/lib/formatoSuperficie'
 
 const fmtUF = (v: number) => `${v.toLocaleString('es-CL', { maximumFractionDigits: 2 })} UF`
 const fmtCLP = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`
@@ -468,9 +469,9 @@ function seccionesHoja1(
             propiedad.unidad_numero || '—',
             '—',
             propiedad.unidad_orientacion || '—',
-            `${propiedad.unidad_sup_interior_m2} m²`,
-            `${propiedad.unidad_sup_terraza_m2} m²`,
-            `${propiedad.unidad_sup_total_m2} m²`,
+            formatM2(propiedad.unidad_sup_interior_m2),
+            formatM2(propiedad.unidad_sup_terraza_m2),
+            formatM2(propiedad.unidad_sup_total_m2),
           ]}
         />
       </TablaCot>
@@ -1030,7 +1031,7 @@ export default function ModuloPDF() {
                   <div style={{ fontSize: 8, color: T.muted }}>U. {c.propiedad.unidad_numero} · {c.propiedad.proyecto_comuna}</div>
                 </td>
                 <td style={{ padding: '5px' }}>{c.propiedad.unidad_tipologia}</td>
-                <td style={{ padding: '5px' }}>{c.propiedad.unidad_sup_total_m2}</td>
+                <td style={{ padding: '5px' }}>{formatSuperficie(c.propiedad.unidad_sup_total_m2)}</td>
                 <td style={{ padding: '5px' }}>
                   <div>{fmtUF(r.precio_compra_total_uf)}</div>
                   <div style={{ fontSize: 8, color: T.muted }}>{fmtCLP(r.precio_compra_total_uf * uf)}</div>
