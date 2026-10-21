@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from 'recharts'
 import { letraCotizacion } from '@/lib/cotizaciones'
+import { formatM2 } from '@/lib/formatoSuperficie'
 
 const CHART_TOOLTIP_STYLE = {
   backgroundColor: '#1a2238',
@@ -180,7 +181,7 @@ export default function ModuloResumen() {
                     </td>
                     <td className="td-num">
                       <div className="cell-stack">
-                        <span className="cell-stack__ufline">{c.propiedad.unidad_sup_total_m2} m²</span>
+                        <span className="cell-stack__ufline">{formatM2(c.propiedad.unidad_sup_total_m2)}</span>
                       </div>
                     </td>
                     <td className="td-num">
