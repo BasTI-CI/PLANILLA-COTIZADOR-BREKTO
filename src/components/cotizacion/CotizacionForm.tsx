@@ -16,6 +16,7 @@ import { unidadSupabaseToDatosPropiedad, validateUnidadSupabaseForMotor } from '
 import type { DatosPropiedad, PromocionesCotizacion } from '@/types'
 import { DEFAULT_PROMOCIONES } from '@/types'
 import { exportarPdfOperacional } from '@/components/pdf/PdfOperacional'
+import { formatM2 } from '@/lib/formatoSuperficie'
 
 interface Props { cotizacionId: number }
 
@@ -46,7 +47,7 @@ function textoResultadoStock(
       ? `${inmobiliaria.trim()} — ${proyecto.trim()} — `
       : ''
   const num = displayNumeroLineaResultado(u.numero, busquedaUnidad)
-  return `${cab}${num} · ${u.tipologia} · ${u.sup_total_m2}m² · ${formatUF(u.precio_lista_uf)}`
+  return `${cab}${num} · ${u.tipologia} · ${formatM2(u.sup_total_m2)} · ${formatUF(u.precio_lista_uf)}`
 }
 
 function SectionHeading({ children }: { children: ReactNode }) {
